@@ -189,6 +189,8 @@ jobs:
     steps:
       # The devices' configurations say which phone each zip is for.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       # Each artifact is a zip, which the download keeps whole under its
       # name, as it is handed out.
       - uses: actions/download-artifact@v8
@@ -228,6 +230,29 @@ jobs:
           done < <(jq -r '.[]' <<< "$DEVICES")
 
           title="Skyward-vivo ${GITHUB_REF_NAME#v}"
-          notes=$(printf 'Skyward-vivo %s\n\n设备：%s\n基于 Skyward v0.5.0。\n\n- vivo recovery 适配\n- 支持 vivo 全量 OTA、OEM/VGC/dyn\n- WLAN、电量、触摸和 fastbootd 支持\n\n刷入前请解锁 bootloader 并备份数据。\n' \
-            "${GITHUB_REF_NAME#v}" "$device_label")
+          previous=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            changes=$(git log --no-merges --pretty='- %s' "$previous..$GITHUB_REF_NAME")
+            compare="### 完整变更
+
+https://github.com/${GH_REPO}/compare/${previous}...${GITHUB_REF_NAME}"
+          else
+            changes=$(git log --no-merges --pretty='- %s' "$GITHUB_REF_NAME")
+            compare=""
+          fi
+          notes=$(printf '## Skyward-vivo %s
+
+设备：%s
+基于 Skyward v0.5.0。
+
+### 更新内容
+
+%s
+
+### 升级说明
+
+- 刷入前请解锁 bootloader 并备份数据。
+
+%s
+' "${GITHUB_REF_NAME#v}" "$device_label" "$changes" "$compare")
           gh release create "$GITHUB_REF_NAME" --title "$title" --notes "$notes" "${zips[@]}" images/SHA256SUMS
