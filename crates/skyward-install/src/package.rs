@@ -119,11 +119,16 @@ impl Update {
         self.metadata.get("post-build-incremental")
     }
 
+    /// Whether the package asks update_engine to powerwash user data.
+    pub fn powerwash(&self) -> bool {
+        self.properties.lines().any(|line| line.trim() == "POWERWASH=1")
+    }
+
     /// Whether the system it installs needs all user data erased before it
     /// starts, as the package says in its description or in what it hands
     /// update_engine.
     pub fn wipes(&self) -> bool {
-        self.metadata.get("ota-wipe") == Some("yes") || self.properties.lines().any(|l| l.trim() == "POWERWASH=1")
+        self.metadata.get("ota-wipe") == Some("yes") || self.powerwash()
     }
 }
 
@@ -617,11 +622,11 @@ pub fn check(update: &Update, phone: &Phone) -> Result<(), Refusal> {
         return Err(Refusal::Incremental);
     }
     let Some(build) = &phone.installed else { return Ok(()) };
-    // A full package may install the version already there again; going
-    // back needs a package made for the build it leaves, an incremental
-    // one.
+    // A full package may install the version already there again. Going
+    // back is allowed only when the package asks for a powerwash, so the
+    // older system never reads data written by the newer one.
     let timestamp = m.get("post-timestamp").and_then(|t| t.parse().ok()).unwrap_or(0);
-    if timestamp < build.timestamp {
+    if timestamp < build.timestamp && !update.powerwash() {
         return Err(Refusal::Older { package: timestamp, installed: build.timestamp });
     }
     // Patch levels are yyyy-mm-dd, so they order as text. Data that is
@@ -736,6 +741,26 @@ METADATA_SIZE=1024
         );
         let allowed = format!("{}spl-downgrade=yes\n", METADATA_TEXT.replace("2026-06-01", "2026-03-01"));
         assert_eq!(check(&update_with(&allowed, PROPERTIES_TEXT), &phone()), Ok(()));
+    }
+
+    #[test]
+    fn an_older_package_may_powerwash_but_nothing_else_lets_it_go_back() {
+        let older = METADATA_TEXT.replace("1781000000", "1770000000");
+        let expected = Err(Refusal::Older { package: 1_770_000_000, installed: 1_778_243_655 });
+        assert_eq!(check(&update_with(&older, PROPERTIES_TEXT), &phone()), expected);
+        let wipe_only = format!("{older}ota-wipe=yes\n");
+        assert_eq!(
+            check(&update_with(&wipe_only, PROPERTIES_TEXT), &phone()),
+            expected,
+            "a wipe from metadata alone does not authorize an older build"
+        );
+        let powerwash = format!("{PROPERTIES_TEXT}POWERWASH=1\n");
+        let update = update_with(&older, &powerwash);
+        assert!(update.powerwash());
+        assert!(update.wipes());
+        assert_eq!(check(&update, &phone()), Ok(()));
+        let no_powerwash = format!("{PROPERTIES_TEXT}POWERWASH=0\n");
+        assert_eq!(check(&update_with(&older, &no_powerwash), &phone()), expected);
     }
 
     #[test]

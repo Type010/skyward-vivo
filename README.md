@@ -115,7 +115,9 @@ export STOCK_RECOVERY="$PWD/stock/recovery.img"
   `dynamic_package` 兜底；匹配不唯一时拒绝安装；
 - 按 vivo 的 `--payloads`、`--offsets`、`--sizes`、`--headers_pair`
   参数启动 `update_engine_sideload`；
-- 在更新后按需保留 recovery 分区，并处理 A/B 合并。
+- 在更新后按需保留 recovery 分区，并处理 A/B 合并；
+- `post-timestamp` 低于已安装系统时，只有 `payload_properties.txt` 明确带
+  `POWERWASH=1` 才继续，并在安装成功后清除 userdata；没有该标志的旧包会被拒绝。
 
 `dyn` 子包会在主更新成功后运行其中的 `update-binary`，用于写入
 `/data/vivo-common/dyn`；数据分区未打开时安装会报错。只应安装可信来源的

@@ -222,7 +222,8 @@ pub enum Refusal {
     /// An incremental package, which needs snapshots that recovery cannot
     /// make on a Virtual A/B phone.
     Incremental,
-    /// Older than the installed system: both build times.
+    /// Older than the installed system, with no powerwash to erase the data
+    /// it could not read: both build times.
     Older { package: i64, installed: i64 },
     /// Its security patch is older than the installed one, which leaves
     /// the data partition unreadable unless it is erased.
