@@ -5,7 +5,7 @@ use super::*;
 use skyward_info::{Boot, Charge, Cpu, Storage};
 use skyward_net::reach::Reach;
 
-// A Xiaomi 13 Ultra panel: 1440 × 3200 at 560 dpi.
+// An iQOO 11 Pro panel: 1440 × 3200 at 560 dpi.
 pub(super) const W: u32 = 1440;
 pub(super) const H: u32 = 3200;
 pub(super) const PPD: f32 = 3.5;
@@ -16,8 +16,8 @@ pub(super) fn fonts() -> Fonts {
 
 pub(super) fn info() -> DeviceInfo {
     DeviceInfo {
-        model: "Xiaomi 13 Ultra".into(),
-        codename: "ishtar".into(),
+        model: "iQOO 11 Pro".into(),
+        codename: "PD2254".into(),
         soc: None,
         cpu: Cpu { cores: 8, max_khz: Some(3_187_200) },
         ram_kib: 15_556_972,

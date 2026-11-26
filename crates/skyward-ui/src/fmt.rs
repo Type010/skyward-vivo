@@ -12,8 +12,8 @@ use skyward_install::ota::Trouble;
 use skyward_install::{Failure, ImageKind, Place as FlashPlace, Ramdisk, Refusal, Target as FlashTarget};
 use skyward_net::download::Failure as DownloadFailure;
 use skyward_net::reach::Reach;
-use skyward_net::release::Unanswered;
 use skyward_net::supplicant::Security;
+use skyward_net::unanswered::Unanswered;
 use skyward_net::wlan::{Bands, Joined, Power, Stage as WlanStage, Wlan};
 use skyward_vab::{Hold, Slot, SnapshotState, Standing};
 use std::sync::OnceLock;
@@ -1174,10 +1174,10 @@ mod tests {
 
     const HANS: Lang = Lang::Hans;
 
-    // Xiaomi 13 Ultra (ishtar, 16 GB + 512 GB): readings from `skyward info`
-    // and the strings its stock About pages print for them.
-    // Xiaomi 17 Ultra (nezha, 16 GB + 1 TB): MemTotal from its boot log and
-    // the userdata size from `fastboot getvar all`.
+    // A 16 GB + 512 GB phone: readings from `skyward info` and the strings
+    // its stock About pages print for them.
+    // A 16 GB + 1 TB phone: MemTotal from its boot log and the userdata
+    // size from `fastboot getvar all`.
     #[test]
     fn ram_rounds_to_module_size() {
         assert_eq!(ram(15_556_972), "16.0 GB");
@@ -1186,27 +1186,27 @@ mod tests {
 
     #[test]
     fn storage_matches_the_stock_settings() {
-        let ishtar = Storage { total: 496_550_785_024, free: Some(61_300_000_000) };
-        assert_eq!(capacity(ishtar.total), "512GB");
-        assert_eq!(storage_used(&ishtar).unwrap(), "450.7GB/512GB");
+        let phone = Storage { total: 496_550_785_024, free: Some(61_300_000_000) };
+        assert_eq!(capacity(phone.total), "512GB");
+        assert_eq!(storage_used(&phone).unwrap(), "450.7GB/512GB");
         assert_eq!(capacity(0xF2_091F_B000), "1TB");
         assert_eq!(storage_used(&Storage { total: 1, free: None }), None);
     }
 
     #[test]
     fn cpu_summary() {
-        let nezha = Cpu { cores: 8, max_khz: Some(4_608_000) };
+        let other = Cpu { cores: 8, max_khz: Some(4_608_000) };
         assert_eq!(cpu(HANS, &Cpu { cores: 8, max_khz: Some(3_187_200) }), "八核 最高 3.19GHz");
-        assert_eq!(cpu(HANS, &nezha), "八核 最高 4.61GHz");
+        assert_eq!(cpu(HANS, &other), "八核 最高 4.61GHz");
         assert_eq!(cpu(HANS, &Cpu { cores: 2, max_khz: None }), "双核");
         assert_eq!(cpu(Lang::Hant, &Cpu { cores: 2, max_khz: None }), "雙核");
-        assert_eq!(cpu(Lang::En, &nezha), "Octa-core, up to 4.61GHz");
+        assert_eq!(cpu(Lang::En, &other), "Octa-core, up to 4.61GHz");
         assert_eq!(cpu(Lang::En, &Cpu { cores: 12, max_khz: None }), "12-core");
         assert_eq!(numeral(HANS, 12), "十二");
         assert_eq!(numeral(HANS, 20), "二十");
     }
 
-    // Xiaomi 13 Ultra battery as `skyward info` read it.
+    // iQOO 11 Pro battery as `skyward info` read it.
     #[test]
     fn battery_lines() {
         let b = Battery {
@@ -1231,7 +1231,7 @@ mod tests {
         assert_eq!(volts(b.voltage.unwrap()), "4.48V");
     }
 
-    // Xiaomi 17 Ultra build and panel, as its stock settings print them.
+    // iQOO 11 Pro build and panel, as its stock settings print them.
     #[test]
     fn versions_and_states() {
         let patch = PatchLevel { year: 2026, month: 10, day: 1 };
@@ -1239,8 +1239,8 @@ mod tests {
         assert_eq!(android(Lang::Hant, "17", Some(&patch)), "17 | Android 安全性更新：2026年10月1日");
         assert_eq!(android(Lang::En, "17", Some(&patch)), "17 | Android security update: October 1, 2026");
         assert_eq!(panel((1200, 2608)), "2608 x 1200");
-        assert_eq!(model_lines("Xiaomi 17 Ultra by Leica"), "Xiaomi 17 Ultra\nby Leica");
-        assert_eq!(model_lines("Xiaomi 17 Ultra"), "Xiaomi 17 Ultra");
+        assert_eq!(model_lines("iQOO 11 Pro by vivo"), "iQOO 11 Pro\nby vivo");
+        assert_eq!(model_lines("iQOO 11 Pro"), "iQOO 11 Pro");
         assert_eq!(inches(6.9), "6.9″");
         assert_eq!(verified(HANS, "orange"), "橙色 · 设备已解锁，不验证系统");
         assert_eq!(health(Lang::En, "Watchdog timer expire"), "Watchdog timer expire");
@@ -1252,7 +1252,7 @@ mod tests {
         assert_eq!(bytes(100_663_296), "100.7MB");
         assert_eq!(bytes(131_072), "131KB");
         assert_eq!(bytes(64), "64B");
-        // The Xiaomi 13 Ultra's installed system, by its ro.build.date.utc.
+        // The iQOO 11 Pro's installed system, by its ro.build.date.utc.
         assert_eq!(date(HANS, 1_778_243_655, china()), "2026年5月8日");
         assert_eq!(date(Lang::En, 1_778_243_655, china()), "May 8, 2026");
         assert_eq!(date(HANS, 0, china()), "1970年1月1日");
@@ -1474,41 +1474,41 @@ mod tests {
     #[test]
     fn reasons_read_as_sentences() {
         let pc = Source::Computer;
-        assert_eq!(refusal(HANS, &Refusal::OtherDevice("nezha".into()), "ishtar", pc, china()), "该更新包适用于 nezha，本机为 ishtar。");
+        assert_eq!(refusal(HANS, &Refusal::OtherDevice("PD2217".into()), "PD2254", pc, china()), "该更新包适用于 PD2217，本机为 PD2254。");
         assert_eq!(
-            refusal(HANS, &Refusal::Older { package: 1_770_000_000, installed: 1_778_243_655 }, "ishtar", pc, china()),
+            refusal(HANS, &Refusal::Older { package: 1_770_000_000, installed: 1_778_243_655 }, "PD2254", pc, china()),
             "该更新包的构建日期为 2026年2月2日，早于当前系统的 2026年5月8日。"
         );
         assert_eq!(
-            refusal(Lang::En, &Refusal::Older { package: 1_770_000_000, installed: 1_778_243_655 }, "ishtar", pc, china()),
+            refusal(Lang::En, &Refusal::Older { package: 1_770_000_000, installed: 1_778_243_655 }, "PD2254", pc, china()),
             "This package was built on February 2, 2026, before the current system, built on May 8, 2026."
         );
-        assert_eq!(refusal(HANS, &Refusal::Battery { level: 12, charging: true }, "ishtar", pc, china()), "电量仅剩 12%，请充电至 15% 以上后重试。");
+        assert_eq!(refusal(HANS, &Refusal::Battery { level: 12, charging: true }, "PD2254", pc, china()), "电量仅剩 12%，请充电至 15% 以上后重试。");
         assert_eq!(
-            refusal(HANS, &Refusal::Pending(SnapshotState::Snapshotted), "ishtar", pc, china()),
+            refusal(HANS, &Refusal::Pending(SnapshotState::Snapshotted), "PD2254", pc, china()),
             "更新已写入，等待合并。请重启到系统，完成上一次更新后重试。"
         );
         assert_eq!(
-            refusal(Lang::En, &Refusal::Pending(SnapshotState::Snapshotted), "ishtar", pc, china()),
+            refusal(Lang::En, &Refusal::Pending(SnapshotState::Snapshotted), "PD2254", pc, china()),
             "Update written, waiting to merge. Reboot to the system to finish the last update, then try again."
         );
         assert_eq!(failure(HANS, &Failure::Engine(26), pc), ("更新包签名验证失败，请发送官方更新包。".into(), Some("错误代码：26".into())));
         assert_eq!(failure(Lang::Hant, &Failure::Engine(26), pc), ("更新檔簽章驗證失敗，請傳送官方更新檔。".into(), Some("錯誤代碼：26".into())));
         assert_eq!(failure(HANS, &Failure::Error("open ep0: busy".into()), pc).1.as_deref(), Some("open ep0: busy"));
         assert_eq!(failure(HANS, &Failure::Script(1), pc), ("安装脚本运行失败，退出码为 1。".into(), None));
-        assert_eq!(refusal(HANS, &Refusal::Unsigned, "ishtar", pc, china()), "该刷机包未签名，请关闭「验证刷机包签名」后重试。");
-        assert_eq!(refusal(HANS, &Refusal::Unverified, "ishtar", pc, china()), "该刷机包未通过签名验证，请关闭「验证刷机包签名」后重试。");
+        assert_eq!(refusal(HANS, &Refusal::Unsigned, "PD2254", pc, china()), "该刷机包未签名，请关闭「验证刷机包签名」后重试。");
+        assert_eq!(refusal(HANS, &Refusal::Unverified, "PD2254", pc, china()), "该刷机包未通过签名验证，请关闭「验证刷机包签名」后重试。");
     }
 
     #[test]
     fn a_file_chosen_is_answered_with_choosing_another() {
         let file = Source::File(Place::Storage);
-        assert_eq!(refusal(HANS, &Refusal::Unknown, "ishtar", file, china()), "无法识别该文件，请选择 A/B 完整更新包、刷机包或分区镜像。");
+        assert_eq!(refusal(HANS, &Refusal::Unknown, "PD2254", file, china()), "无法识别该文件，请选择 A/B 完整更新包、刷机包或分区镜像。");
         assert_eq!(
-            refusal(Lang::En, &Refusal::Unknown, "ishtar", file, china()),
+            refusal(Lang::En, &Refusal::Unknown, "PD2254", file, china()),
             "This file isn't recognized. Choose an A/B full OTA package, a flashable zip or a partition image."
         );
-        assert_eq!(refusal(HANS, &Refusal::Incremental, "ishtar", file, china()), "无法安装增量更新包，请选择完整更新包。");
+        assert_eq!(refusal(HANS, &Refusal::Incremental, "PD2254", file, china()), "无法安装增量更新包，请选择完整更新包。");
         assert_eq!(failure(HANS, &Failure::Engine(26), file).0, "更新包签名验证失败，请选择官方更新包。");
         assert_eq!(failure(HANS, &Failure::Changed, file).0, "文件在读取过程中被修改，请重新选择。");
         let gone = "read /sdcard/Download/ota.zip: Input/output error (os error 5)";
@@ -1622,7 +1622,7 @@ mod tests {
 
     #[test]
     fn every_language_writes_a_date_in_its_own_order_with_its_own_month() {
-        // The Xiaomi 13 Ultra's installed system, by its ro.build.date.utc.
+        // The iQOO 11 Pro's installed system, by its ro.build.date.utc.
         let built = 1_778_243_655;
         assert_eq!(date(Lang::Hant, built, china()), "2026年5月8日");
         assert_eq!(date(Lang::Tr, built, china()), "8 Mayıs 2026");

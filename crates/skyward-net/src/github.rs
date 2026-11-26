@@ -25,7 +25,7 @@ pub struct Newest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Build {
     /// The zip's own name, such as
-    /// skyward-v0.1.4-ishtar-OS3.0.308.0.WMACNXM.zip.
+    /// skyward-v0.1.4-PD2254-16.3.12.2.W10.zip.
     pub name: String,
     /// Where GitHub's API hands it out, which [`locate`] asks for where the
     /// file itself is.
@@ -149,30 +149,30 @@ mod tests {
 
     /// What GitHub answered of the newest release on 2026-11-07, with the
     /// parts that do not matter here left out.
-    const ANSWERED_013: &str = r#"{"url":"https://api.github.com/repos/kirklin/skyward/releases/437365758","tag_name":"v0.1.3","name":"v0.1.3","draft":false,"prerelease":false,"assets":[{"url":"https://api.github.com/repos/kirklin/skyward/releases/assets/719751468","id":719751468,"name":"SHA256SUMS","label":"","content_type":"application/octet-stream","state":"uploaded","size":2337,"digest":"sha256:052f9ca757baeb2eac78c8e546bcc54178f6bb9bf9e5bde53fa81b3f48448957","browser_download_url":"https://github.com/kirklin/skyward/releases/download/v0.1.3/SHA256SUMS"},{"url":"https://api.github.com/repos/kirklin/skyward/releases/assets/719751598","id":719751598,"name":"skyward-v0.1.3-ishtar-OS3.0.308.0.WMACNXM.zip","label":"Xiaomi 13 Ultra (ishtar)","content_type":"application/zip","state":"uploaded","size":42739608,"digest":"sha256:62b66f7d13a0eb6c9af3359b5ec6f9c223fd9a86b1f8abab3e9d2646cb2ce534","browser_download_url":"https://github.com/kirklin/skyward/releases/download/v0.1.3/skyward-v0.1.3-ishtar-OS3.0.308.0.WMACNXM.zip"},{"url":"https://api.github.com/repos/kirklin/skyward/releases/assets/719751747","id":719751747,"name":"skyward-v0.1.3-nezha-OS4.0.4.0.XPACNXM.zip","label":"Xiaomi 17 Ultra (nezha)","content_type":"application/zip","state":"uploaded","size":43145196,"digest":"sha256:9f6165079529418d8f6635beddfdd9abf9a70c89d69eb467a9922b0db69bfaf1","browser_download_url":"https://github.com/kirklin/skyward/releases/download/v0.1.3/skyward-v0.1.3-nezha-OS4.0.4.0.XPACNXM.zip"}]}"#;
+    const ANSWERED_013: &str = r#"{"url":"https://api.github.com/repos/kirklin/skyward/releases/437365758","tag_name":"v0.1.3","name":"v0.1.3","draft":false,"prerelease":false,"assets":[{"url":"https://api.github.com/repos/kirklin/skyward/releases/assets/719751468","id":719751468,"name":"SHA256SUMS","label":"","content_type":"application/octet-stream","state":"uploaded","size":2337,"digest":"sha256:052f9ca757baeb2eac78c8e546bcc54178f6bb9bf9e5bde53fa81b3f48448957","browser_download_url":"https://github.com/kirklin/skyward/releases/download/v0.1.3/SHA256SUMS"},{"url":"https://api.github.com/repos/kirklin/skyward/releases/assets/719751598","id":719751598,"name":"skyward-v0.1.3-PD2254-16.3.12.2.W10.zip","label":"vivo iQOO 11 Pro (PD2254)","content_type":"application/zip","state":"uploaded","size":42739608,"digest":"sha256:62b66f7d13a0eb6c9af3359b5ec6f9c223fd9a86b1f8abab3e9d2646cb2ce534","browser_download_url":"https://github.com/kirklin/skyward/releases/download/v0.1.3/skyward-v0.1.3-PD2254-16.3.12.2.W10.zip"},{"url":"https://api.github.com/repos/kirklin/skyward/releases/assets/719751747","id":719751747,"name":"skyward-v0.1.3-PD2217-16.5.17.1.W10.zip","label":"vivo iQOO 10 (PD2217)","content_type":"application/zip","state":"uploaded","size":43145196,"digest":"sha256:9f6165079529418d8f6635beddfdd9abf9a70c89d69eb467a9922b0db69bfaf1","browser_download_url":"https://github.com/kirklin/skyward/releases/download/v0.1.3/skyward-v0.1.3-PD2217-16.5.17.1.W10.zip"}]}"#;
 
     #[test]
     fn the_newest_release_gives_the_zip_for_the_phone() {
-        let n = newest(ANSWERED_013, "ishtar", "0.1.2").unwrap();
+        let n = newest(ANSWERED_013, "PD2254", "0.1.2").unwrap();
         assert_eq!(n.version, "0.1.3");
         assert!(n.newer);
         assert_eq!(
             n.build,
             Some(Build {
-                name: "skyward-v0.1.3-ishtar-OS3.0.308.0.WMACNXM.zip".into(),
+                name: "skyward-v0.1.3-PD2254-16.3.12.2.W10.zip".into(),
                 url: "https://api.github.com/repos/kirklin/skyward/releases/assets/719751598".into(),
-                link: "https://github.com/kirklin/skyward/releases/download/v0.1.3/skyward-v0.1.3-ishtar-OS3.0.308.0.WMACNXM.zip".into(),
+                link: "https://github.com/kirklin/skyward/releases/download/v0.1.3/skyward-v0.1.3-PD2254-16.3.12.2.W10.zip".into(),
                 size: 42739608,
                 sha256: "62b66f7d13a0eb6c9af3359b5ec6f9c223fd9a86b1f8abab3e9d2646cb2ce534".into(),
             })
         );
-        assert_eq!(newest(ANSWERED_013, "nezha", "0.1.2").unwrap().build.unwrap().size, 43145196);
+        assert_eq!(newest(ANSWERED_013, "PD2217", "0.1.2").unwrap().build.unwrap().size, 43145196);
     }
 
     #[test]
     fn a_zip_is_downloaded_from_where_github_sends_it_then_from_its_link() {
-        let build = newest(ANSWERED_013, "ishtar", "0.1.2").unwrap().build.unwrap();
-        let link = "https://github.com/kirklin/skyward/releases/download/v0.1.3/skyward-v0.1.3-ishtar-OS3.0.308.0.WMACNXM.zip";
+        let build = newest(ANSWERED_013, "PD2254", "0.1.2").unwrap().build.unwrap();
+        let link = "https://github.com/kirklin/skyward/releases/download/v0.1.3/skyward-v0.1.3-PD2254-16.3.12.2.W10.zip";
         assert_eq!(build.sources(Some("https://release-assets.githubusercontent.com/a?sig=1".into())), ["https://release-assets.githubusercontent.com/a?sig=1", link]);
         assert_eq!(build.sources(None), [link], "where GitHub's API gave no address");
     }
@@ -215,10 +215,10 @@ mod tests {
 
     #[test]
     fn a_release_is_newer_only_than_an_older_build() {
-        assert!(!newest(ANSWERED_013, "ishtar", "0.1.3").unwrap().newer, "the same version");
-        assert!(!newest(ANSWERED_013, "ishtar", "0.2.0").unwrap().newer, "a build ahead of every release");
-        assert!(newest(ANSWERED_013, "ishtar", "0.1.3-rc.1").unwrap().newer, "a build before the release it led to");
-        assert!(newest(ANSWERED_013, "ishtar", "0.1").is_err(), "a version this build cannot have");
+        assert!(!newest(ANSWERED_013, "PD2254", "0.1.3").unwrap().newer, "the same version");
+        assert!(!newest(ANSWERED_013, "PD2254", "0.2.0").unwrap().newer, "a build ahead of every release");
+        assert!(newest(ANSWERED_013, "PD2254", "0.1.3-rc.1").unwrap().newer, "a build before the release it led to");
+        assert!(newest(ANSWERED_013, "PD2254", "0.1").is_err(), "a version this build cannot have");
     }
 
     #[test]
@@ -231,11 +231,11 @@ mod tests {
     #[test]
     fn a_zip_needs_its_sha256_and_a_release_its_version() {
         let unsummed = ANSWERED_013.replace("\"digest\":\"sha256:62b66f7d13a0eb6c9af3359b5ec6f9c223fd9a86b1f8abab3e9d2646cb2ce534\"", "\"digest\":null");
-        let e = newest(&unsummed, "ishtar", "0.1.2").unwrap_err();
-        assert_eq!(e.to_string(), "GitHub gives no SHA-256 of skyward-v0.1.3-ishtar-OS3.0.308.0.WMACNXM.zip");
-        assert!(newest(&unsummed, "nezha", "0.1.2").is_ok(), "another phone's zip has its own");
+        let e = newest(&unsummed, "PD2254", "0.1.2").unwrap_err();
+        assert_eq!(e.to_string(), "GitHub gives no SHA-256 of skyward-v0.1.3-PD2254-16.3.12.2.W10.zip");
+        assert!(newest(&unsummed, "PD2217", "0.1.2").is_ok(), "another phone's zip has its own");
         let untagged = ANSWERED_013.replace("\"tag_name\":\"v0.1.3\"", "\"tag_name\":\"nightly\"");
-        assert!(newest(&untagged, "ishtar", "0.1.2").is_err());
-        assert!(newest("{}", "ishtar", "0.1.2").is_err());
+        assert!(newest(&untagged, "PD2254", "0.1.2").is_err());
+        assert!(newest("{}", "PD2254", "0.1.2").is_err());
     }
 }

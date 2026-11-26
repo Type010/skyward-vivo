@@ -674,7 +674,7 @@ mod tests {
         let entries: [(&str, &[u8]); 3] = [
             ("payload.bin", payload),
             ("payload_properties.txt", b"FILE_SIZE=40000\n"),
-            ("META-INF/com/android/metadata", b"ota-type=AB\npre-device=ishtar\n"),
+            ("META-INF/com/android/metadata", b"ota-type=AB\npre-device=PD2254\n"),
         ];
         let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
         for (name, data) in entries {

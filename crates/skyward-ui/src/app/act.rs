@@ -489,49 +489,6 @@ impl App {
                 self.refresh();
             }
             // Asking takes a network, which the WLAN page joins.
-            Action::CheckUpdate => {
-                if !self.state.online() {
-                    self.open(Screen::Wlan);
-                    return self.arrive_at(Screen::Wlan);
-                }
-                if self.state.check != Check::Asking {
-                    self.state.check = Check::Asking;
-                    self.refresh();
-                    return vec![Effect::CheckUpdate];
-                }
-            }
-            // The package goes to internal storage, which the decrypt page
-            // opens, over a network the WLAN page joins.
-            Action::Download => {
-                let release = self.state.newest().expect("the download is offered for the newest system").clone();
-                if !self.state.data.storage_open() {
-                    self.open(Screen::Decrypt);
-                    return self.arrive_at(Screen::Decrypt);
-                }
-                if !self.state.online() {
-                    self.open(Screen::Wlan);
-                    return self.arrive_at(Screen::Wlan);
-                }
-                if !self.state.downloading() {
-                    self.state.download = Some(DownloadJob { progress: None, rate: 0, outcome: None, stopping: false });
-                    self.refresh();
-                    return vec![Effect::Download(release)];
-                }
-            }
-            Action::StopDownload => {
-                let job = self.state.download.as_mut().expect("only a download under way is stopped");
-                if job.outcome.is_none() && !job.stopping {
-                    job.stopping = true;
-                    self.refresh();
-                    return vec![Effect::StopDownload];
-                }
-            }
-            Action::InstallDownloaded => {
-                let name = self.state.newest().expect("the package installed is the newest system's").name.clone();
-                let Have::Whole(size) = self.state.have else { unreachable!("only a whole package is offered to install") };
-                return self.install_file(Place::Storage, format!("{DOWNLOADS}/{name}"), size, now);
-            }
-            // Asking takes a network, which the WLAN page joins.
             Action::CheckSkyward => {
                 if !self.state.online() {
                     self.open(Screen::Wlan);

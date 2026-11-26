@@ -346,12 +346,9 @@ const PROTECTORS: &str = "/data/system_de";
 
 /// Read what a user's own credential keeps their secret behind. A phone
 /// may keep more than one blob for a user: Android keeps one for each
-/// token some part of the phone was given to reach the secret with, and
-/// HyperOS, once the owner changes one screen lock for another with a
-/// fingerprint enrolled, keeps a second one for a while, so that the
-/// credential before can still be used. Which of them the user's current
-/// credential opens is the phone's own business, and it writes that down,
-/// so this reads it rather than guess.
+/// token some part of the phone was given to reach the secret with. Which
+/// of them the user's current credential opens is the phone's own
+/// business, and it writes that down, so this reads it rather than guess.
 fn protector(user: u32) -> Result<crate::user::Protector> {
     let dir = blobs(user);
     let mut ids = Vec::new();
@@ -437,21 +434,11 @@ const MADE_UP_FILE: &str = "gatekeeper.profile.key";
 /// it.
 const MADE_UP_KEY: &str = "profile_key_name_decrypt_";
 
-/// HyperOS keeps the file beside the blob of the user's protector instead,
-/// named after the protector with this ending, and puts the protector's
-/// name after the user's number in the key's name too.
-const MADE_UP_BESIDE_BLOB: &str = "profile_pwd";
-
-/// The file holding the credential the phone made up for `user`, whose
-/// protector is `id`, and the name of the key it is encrypted under: where
-/// Android keeps them, or where HyperOS does. `None` where it made none up.
-fn made_up_record(user: u32, id: &str) -> Option<(PathBuf, String)> {
+/// The file holding the credential the phone made up for `user`, and the
+/// name of the key it is encrypted under. `None` where it made none up.
+fn made_up_record(user: u32, _id: &str) -> Option<(PathBuf, String)> {
     let android = Path::new(MADE_UP).join(user.to_string()).join(MADE_UP_FILE);
-    if android.is_file() {
-        return Some((android, format!("{MADE_UP_KEY}{user}")));
-    }
-    let hyperos = blobs(user).join(format!("{id}.{MADE_UP_BESIDE_BLOB}"));
-    hyperos.is_file().then(|| (hyperos, format!("{MADE_UP_KEY}{user}.{id}")))
+    android.is_file().then(|| (android, format!("{MADE_UP_KEY}{user}")))
 }
 
 /// The credential a phone made up for `user`, whose protector is `id`,

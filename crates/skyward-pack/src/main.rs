@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 mod avb;
 mod described;
+mod remote;
 
 use skyward_bootimg::{BootImage, Ramdisk};
 
@@ -135,7 +136,7 @@ fn main() -> Result<()> {
                 anyhow::bail!("{} holds {}, which is not a stock recovery", stock.display(), e.name);
             }
             let read = |p: &PathBuf| std::fs::read(p).with_context(|| format!("read {}", p.display()));
-            skyward_config::DeviceConfig::load(&config)?;
+            let device = skyward_config::DeviceConfig::load(&config)?;
             rd.replace(paths::RECOVERY, read(&binary)?)?;
             // Install scripts look for the commands a stock recovery lacks
             // among its programs, and its unzip there too, a link to ziptool
@@ -155,19 +156,11 @@ fn main() -> Result<()> {
                 rd.add(paths::TASK_PROFILES, 0o644, TASK_PROFILES.to_vec())?;
             }
             rd.add(paths::MTP_RC, 0o644, MTP_RC.to_vec())?;
-            // On an unlocked device adbd keeps root when ro.secure is 0 and
-            // lets any computer in without authorization when ro.adb.secure is
-            // 0; init lets a later line of a property file override an earlier
-            // one. update_engine refuses a package built before the recovery
-            // itself unless both of the last two are set; the recovery checks
-            // packages against the installed system instead.
             let stock_props = &rd
                 .find(paths::PROP_DEFAULT)
                 .with_context(|| format!("{} is not in the ramdisk", paths::PROP_DEFAULT))?
                 .data;
-            let mut props = without(stock_props, &BUILD_VERSION);
-            props.extend_from_slice(b"\nro.secure=0\nro.adb.secure=0\nro.debuggable=1\nro.ota.allow_downgrade=true\n");
-            rd.replace(paths::PROP_DEFAULT, props)?;
+            rd.replace(paths::PROP_DEFAULT, recovery_props(stock_props, device.usb.self_setup && !device.device.ab))?;
             img.ramdisk = rd.encode()?;
             let bytes = img.to_bytes()?;
             write(&out, &img, &avb::footed(&bytes, "recovery", size, &Sha256::digest(&bytes))?)
@@ -199,7 +192,11 @@ fn take_stock_recovery(stock: &skyward_config::Stock, out: &Path) -> Result<()> 
     std::fs::create_dir_all(parent).with_context(|| format!("make {}", parent.display()))?;
     // Taken out beside where it goes, so it is moved there whole.
     let work = tempfile::Builder::new().prefix(".stock").tempdir_in(parent).with_context(|| format!("make a folder in {}", parent.display()))?;
-    let payload = unpayload::Payload::open_url(&stock.package).with_context(|| format!("open {}", stock.package))?;
+    let payload = match unpayload::Payload::open_url(&stock.package) {
+        Ok(payload) => payload,
+        Err(e) if e.to_string().contains("no payload.bin") => return take_block_recovery(stock, out),
+        Err(e) => return Err(e).with_context(|| format!("open {}", stock.package)),
+    };
     let options = unpayload::ExtractOptions { output_dir: work.path().to_path_buf(), partitions: vec![RECOVERY.into()], ..Default::default() };
     let report = |event: unpayload::Event<'_>| match event {
         unpayload::Event::Started { partitions } => {
@@ -216,6 +213,26 @@ fn take_stock_recovery(stock: &skyward_config::Stock, out: &Path) -> Result<()> 
     ensure!(sum == stock.recovery, "the {RECOVERY} partition in {} has the SHA-256 {sum}, where the configuration names {}", stock.package, stock.recovery);
     std::fs::rename(&image.path, out).with_context(|| format!("move {} to {}", image.path.display(), out.display()))?;
     println!("wrote {} ({} bytes), its SHA-256 the one the configuration names", out.display(), image.size);
+    Ok(())
+}
+
+/// Take the recovery partition out of a block OTA package: the ZIP holds
+/// `firmware-update/recovery.img` rather than a `payload.bin`.
+fn take_block_recovery(stock: &skyward_config::Stock, out: &Path) -> Result<()> {
+    println!("taking {RECOVERY} out of the block package {}", stock.package);
+    let bytes = remote::recovery(&stock.package, RECOVERY)?;
+    let sum = hex::encode(Sha256::digest(&bytes));
+    ensure!(
+        sum == stock.recovery,
+        "the {RECOVERY} image in {} has the SHA-256 {sum}, where the configuration names {}",
+        stock.package,
+        stock.recovery
+    );
+    if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).with_context(|| format!("make {}", parent.display()))?;
+    }
+    std::fs::write(out, &bytes).with_context(|| format!("write {}", out.display()))?;
+    println!("wrote {} ({} bytes), its SHA-256 the one the configuration names", out.display(), bytes.len());
     Ok(())
 }
 
@@ -246,6 +263,11 @@ fn partition_size(stock: &Path) -> Result<usize> {
 /// fill in from the installed system once it has that mounted.
 const BUILD_VERSION: [&str; 3] = ["ro.build.version.release", "ro.build.version.security_patch", "ro.vendor.build.security_patch"];
 
+/// The properties the recovery sets for itself rather than taking from the
+/// stock recovery's file, where an init that keeps its first line would
+/// otherwise leave the stock values in place.
+const RECOVERY_PROPS: [&str; 4] = ["ro.secure", "ro.adb.secure", "ro.debuggable", "ro.ota.allow_downgrade"];
+
 /// The scheduling profiles a recovery's programs look up by name. A
 /// recovery's cgroup setup mounts no controllers, so of all a system's
 /// profiles do, only the timer slack applies here.
@@ -265,6 +287,23 @@ fn without(props: &[u8], names: &[&str]) -> Vec<u8> {
         }
     }
     out
+}
+
+/// The recovery's property file. On an unlocked device adbd keeps root when
+/// ro.secure is 0 and lets any computer in without authorization when
+/// ro.adb.secure is 0; a stock recovery's file names both already. A phone
+/// whose init keeps the first line rather than the last has the stock lines
+/// taken out first; on the others they stay and the values follow, as they
+/// always have. update_engine refuses a package built before the recovery
+/// itself unless both of the last two are set; the recovery checks packages
+/// against the installed system instead.
+fn recovery_props(stock: &[u8], self_setup: bool) -> Vec<u8> {
+    let mut props = without(stock, &BUILD_VERSION);
+    if self_setup {
+        props = without(&props, &RECOVERY_PROPS);
+    }
+    props.extend_from_slice(b"\nro.secure=0\nro.adb.secure=0\nro.debuggable=1\nro.ota.allow_downgrade=true\n");
+    props
 }
 
 /// Write `bytes`, the image `img` makes, to `out`.
@@ -288,7 +327,7 @@ fn list(image: &Path) -> Result<()> {
         h.header_version(),
         img.kernel.len(),
         img.ramdisk.len(),
-        h.osversionpatch
+        h.osversionpatch()
     );
     if img.ramdisk.is_empty() {
         return Ok(());
@@ -307,15 +346,36 @@ mod tests {
 
     #[test]
     fn the_lines_that_set_a_name_are_the_only_ones_left_out() {
-        let props = b"ro.build.id=TQ\nro.build.version.release=13\nro.build.version.release_or_codename=13\nro.product.name=ishtar\n\
+        let props = b"ro.build.id=TQ\nro.build.version.release=16\nro.build.version.release_or_codename=16\nro.product.name=PD2254\n\
 ro.vendor.build.security_patch=2026-10-01\nro.vendor.build.security_patch_level=1\n";
         let out = without(props, &BUILD_VERSION);
         let text = String::from_utf8(out).expect("property files are text");
-        assert!(!text.contains("ro.build.version.release=13"));
+        assert!(!text.contains("ro.build.version.release=16"));
         assert!(!text.contains("ro.vendor.build.security_patch=2026-10-01"), "the vendor partition's patch level is left out too");
-        assert!(text.contains("ro.build.version.release_or_codename=13"), "a longer name is left alone");
+        assert!(text.contains("ro.build.version.release_or_codename=16"), "a longer name is left alone");
         assert!(text.contains("ro.vendor.build.security_patch_level=1"), "a longer name is left alone");
-        assert!(text.contains("ro.build.id=TQ") && text.contains("ro.product.name=ishtar"));
+        assert!(text.contains("ro.build.id=TQ") && text.contains("ro.product.name=PD2254"));
+    }
+
+    #[test]
+    fn the_recovery_properties_replace_the_stock_ones_rather_than_follow_them() {
+        let props = b"ro.secure=1\nro.adb.secure=1\nro.debuggable=0\nro.ota.allow_downgrade=false\nro.product.name=PD2217\n";
+        let out = without(props, &[&BUILD_VERSION[..], &RECOVERY_PROPS[..]].concat());
+        let text = String::from_utf8(out).expect("property files are text");
+        for line in ["ro.secure=", "ro.adb.secure=", "ro.debuggable=", "ro.ota.allow_downgrade="] {
+            assert!(!text.contains(line), "{line} is left for the pack to set alone");
+        }
+        assert!(text.contains("ro.product.name=PD2217"));
+    }
+
+    #[test]
+    fn a_phone_that_sets_its_port_up_gets_the_stock_lines_taken_out_and_the_others_do_not() {
+        let stock = b"ro.secure=1\nro.adb.secure=1\nro.debuggable=0\n";
+        let kept = String::from_utf8(recovery_props(stock, false)).expect("property files are text");
+        assert_eq!(kept.matches("ro.secure=").count(), 2, "the stock line stays and the recovery value follows it");
+        let own = String::from_utf8(recovery_props(stock, true)).expect("property files are text");
+        assert_eq!(own.matches("ro.secure=").count(), 1, "the stock line is taken out first");
+        assert!(own.contains("ro.secure=0") && own.contains("ro.debuggable=1"));
     }
 
     #[test]

@@ -1,0 +1,59 @@
+# Skyward-vivo device configuration for the vivo SM8475 platform.
+# Platform: SM8475, 1080x2400, single slot + dynamic partitions.
+
+[device]
+codename = "PD2217"
+brand = "vivo"
+model = "iQOO 10"
+release_name = "IQOO 10(PD2217)"
+ab = false
+soc = { hans = "第一代骁龙®8+移动平台", hant = "第一代驍龍®8+ 行動平台", en = "Snapdragon® 8+ Gen 1 Mobile Platform" }
+os_version_prop = "ro.vivo.build.version.incremental"
+
+[usb]
+# This build's recovery init does not set sys.usb.configfs or make the
+# configfs gadget, so adbd has no function to open; the recovery makes the
+# port itself.
+self_setup = true
+
+[firmware]
+# The modem partition carries the WLAN firmware and board data.
+partition = "modem"
+
+[display]
+width = 1080
+height = 2400
+density = 480
+
+[modules]
+# The vendor partition carries the complete module set with its
+# modules.dep; vendor_dlkm's is a subset, so it comes after.
+sources = ["vendor_boot", "vendor", "vendor_dlkm"]
+# vivo touchscreen: vivo_ts over the stock input device (evdev).
+load = ["vivo_ts"]
+
+[wlan]
+# WCN6750 (qca6490), the same driver the stock recovery loads.
+modules = ["qca_cld3_qca6490"]
+writes = [{ path = "/sys/devices/platform/soc/b0000000.qcom,cnss-qca6490/fs_ready", value = "1" }]
+interface = "wlan0"
+# The recovery's own supplicant, which the stock recovery runs.
+supplicant = "/system/bin/wpa_supplicant"
+libraries = ["/system/lib64", "/vendor/lib64"]
+service = "android.hardware.wifi.supplicant.ISupplicant/default"
+probe = "http://connect.rom.miui.com/generate_204"
+
+[backup]
+# Baseband identity, the modem's golden copy, and the calibration vivo
+# keeps for the sensors, the fingerprint reader and the WLAN MAC.
+efs = ["modemst1", "modemst2", "fsg", "fsc", "persist"]
+# Folders the phone's own secure world keeps in step with itself; an older
+# copy written back would not open.
+data_skipped = ["vendor/fingerprint", "vendor/faceunlock"]
+
+[stock]
+# The stock recovery this image is packed on. The package is named by its
+# content; the recovery hash pins the partition taken out of it.
+version = "PD2217_A_16.5.17.1.W10.V000L1"
+package = "https://sysupdxdl.vivo.com.cn/upgrade/oem/files/202609181938278927e7f9835976f6c89de34891724461.zip"
+recovery = "f41cb1f17423c3feeb79a1538aeb1866f8c4b4a2695a5029ac0609d6cbc49977"

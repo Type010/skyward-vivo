@@ -3,11 +3,25 @@ use prost::Message;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(target_os = "android")]
 pub mod boot;
 mod partitions;
 pub mod snapshots;
+
+/// Whether the phone has one slot, whose partitions carry no suffix. Set
+/// from the device configuration before the pages mount anything.
+static SINGLE_SLOT: AtomicBool = AtomicBool::new(false);
+
+/// Tell the slot functions that this phone has one slot without a suffix.
+pub fn set_single_slot(single: bool) {
+    SINGLE_SLOT.store(single, Ordering::Relaxed);
+}
+
+pub fn single_slot() -> bool {
+    SINGLE_SLOT.load(Ordering::Relaxed)
+}
 
 pub use partitions::{
     can_remake, check_merge, map_slot, map_whole, mount_one, mount_partitions, mount_point, mounted_partitions, release_partitions,
@@ -24,6 +38,9 @@ pub enum Slot {
 
 impl Slot {
     pub fn suffix(self) -> &'static str {
+        if single_slot() {
+            return "";
+        }
         match self {
             Slot::A => "_a",
             Slot::B => "_b",
@@ -46,6 +63,9 @@ impl Slot {
     }
 
     pub fn other(self) -> Slot {
+        if single_slot() {
+            return Slot::A;
+        }
         match self {
             Slot::A => Slot::B,
             Slot::B => Slot::A,
@@ -75,6 +95,7 @@ pub struct BootSlots {
 /// The booted slot, or `None` on devices that are not A/B.
 pub fn current_slot() -> Result<Option<Slot>> {
     match skyward_block::slot_suffix()? {
+        None if single_slot() => Ok(Some(Slot::A)),
         None => Ok(None),
         Some(s) => Slot::from_suffix(&s).map(Some).ok_or_else(|| anyhow!("slot suffix {s:?}")),
     }
@@ -421,7 +442,7 @@ mod tests {
 
     #[test]
     fn empty_state_file_means_no_update() {
-        // A Xiaomi 17 Ultra with no update pending keeps a zero-length file.
+        // A phone with no update pending keeps a zero-length file.
         assert_eq!(phase(&[]), SnapshotState::None);
     }
 
@@ -458,7 +479,7 @@ mod tests {
             total_sectors: 4_225_024,
             metadata_sectors: 33_024,
             merge_phase: MergePhase::SecondPhase as i32,
-            source_build_fingerprint: "Xiaomi/ishtar/ishtar:13/TKQ1.221114.001/OS3.0.305.0.WMACNXM:user/release-keys".into(),
+            source_build_fingerprint: "vivo/PD2254/PD2254:16/BP2A.250605.031.A3/16.3.12.2.W10:user/release-keys".into(),
             ..UpdateStatus::default()
         };
         assert_eq!(decode_status(&status.encode_to_vec()).unwrap(), status);

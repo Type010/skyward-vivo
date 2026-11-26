@@ -117,7 +117,7 @@ pub struct Battery {
     pub full: Option<u64>,
     /// Voltage in µV.
     pub voltage: Option<u64>,
-    /// A charger charging it quickly, as Xiaomi's Qualcomm phones tell
+    /// A charger charging it quickly, as vivo's Qualcomm phones tell
     /// beside their power supplies.
     pub quick: bool,
     /// A charger or a computer powers the phone, by cable or wirelessly: a
@@ -270,11 +270,11 @@ const PROP_ORDER: [&str; 8] = ["system", "system_ext", "system_dlkm", "vendor", 
 const BOOT_PROPS: &str = "ro.boot.";
 
 /// The installed system's build properties from its mounted partitions, in
-/// init's order. Partitions init does not list, such as Xiaomi's mi_ext,
-/// come after the ones it does. Init has the properties the bootloader
-/// passes before it reads any of these, and a file may import another named
-/// after them, as Xiaomi's odm imports what each hardware version sets; so
-/// they come first here too, the same in a recovery as in the system.
+/// init's order. Partitions init does not list come after the ones it
+/// does. Init has the properties the bootloader passes before it reads any
+/// of these, and a file may import another named after them, as an odm
+/// partition imports what each hardware version sets; so they come first
+/// here too, the same in a recovery as in the system.
 pub fn installed_props(slot: Slot) -> Result<HashMap<String, String>> {
     let base = |m: &skyward_vab::Mounted| -> String {
         m.partition.strip_suffix(slot.suffix()).expect("mounted partitions carry the slot suffix").to_string()
@@ -447,20 +447,37 @@ fn battery(root: &Path) -> Result<Option<Battery>> {
         "Unknown" => Charge::Unknown,
         other => bail!("{}: status {other:?}", dir.display()),
     };
+    let voltage = parse_opt(dir.join("voltage_now"), "voltage_now")?;
+    // A vivo fuel gauge names one cell's capacity in mAh on a pack whose
+    // cells are in series; Android's own is the whole pack in µAh.
+    let cells = match voltage {
+        Some(v) if v > 6_000_000 => 2,
+        _ => 1,
+    };
     Ok(Some(Battery {
         level: parse(&read(dir.join("capacity"))?, "capacity")?,
         charge,
         temp: parse_opt(dir.join("temp"), "temp")?,
         health: read_opt(dir.join("health"))?,
         cycles: parse_opt(dir.join("cycle_count"), "cycle_count")?,
-        design: parse_opt(dir.join("charge_full_design"), "charge_full_design")?,
-        full: parse_opt(dir.join("charge_full"), "charge_full")?,
-        voltage: parse_opt(dir.join("voltage_now"), "voltage_now")?,
+        design: parse_opt(dir.join("charge_full_design"), "charge_full_design")?.map(|v| capacity(v, cells)),
+        full: parse_opt(dir.join("charge_full"), "charge_full")?.map(|v| capacity(v, cells)),
+        voltage,
         // How quickly the charger charges: 0 normally, then fast, flash,
         // turbo and super, which the stock SystemUI all counts quick.
         quick: parse_opt::<u8>(root.with_file_name("qcom-battery").join("quick_charge_type"), "quick_charge_type")?.is_some_and(|k| (1..=4).contains(&k)),
         plugged,
     }))
+}
+
+/// A fuel gauge's capacity as the whole pack's, in µAh. A reading below
+/// ten thousand is a cell's mAh, as vivo's is; one larger is already µAh.
+fn capacity(value: u64, cells: u64) -> u64 {
+    if value < 10_000 {
+        value.saturating_mul(1000).saturating_mul(cells)
+    } else {
+        value
+    }
 }
 
 /// Whether the power supply in `dir` says a charger or a computer is
@@ -497,7 +514,7 @@ mod tests {
 
     #[test]
     fn mem_total_from_meminfo() {
-        // Values reported by a Xiaomi 17 Ultra.
+        // Values reported by an iQOO 11 Pro.
         let text = "MemTotal:       15472464 kB\nMemFree:         2381608 kB\n";
         assert_eq!(mem_total(text).unwrap(), 15_472_464);
         assert!(mem_total("MemFree: 1 kB\n").is_err());
@@ -575,7 +592,27 @@ mod tests {
         }
         let b = battery(&supplies).unwrap().expect("a battery");
         assert_eq!((b.level, b.temp, b.charge), (82, Some(342), Charge::Charging));
-        assert_eq!((b.design, b.full), (Some(2293), None), "an empty field is not one it tells");
+        assert_eq!((b.design, b.full), (Some(2_293_000), None), "a cell's mAh, as a pack's µAh");
+    }
+
+    #[test]
+    fn a_two_cell_pack_names_the_whole_pack() {
+        let class = tempfile::tempdir().unwrap();
+        let supplies = class.path().join("power_supply");
+        let bms = supplies.join("bq_bms");
+        fs::create_dir_all(&bms).unwrap();
+        for (name, value) in [
+            ("type", "Unknown"),
+            ("status", "Charging"),
+            ("capacity", "82"),
+            ("temp", "342"),
+            ("voltage_now", "8400000"),
+            ("charge_full_design", "2275"),
+        ] {
+            fs::write(bms.join(name), format!("{value}\n")).unwrap();
+        }
+        let b = battery(&supplies).unwrap().expect("a battery");
+        assert_eq!(b.design, Some(4_550_000), "2275 mAh a cell, two cells in series");
     }
 
     #[test]

@@ -542,7 +542,7 @@ fn bring_up(cfg: &DeviceConfig, slot: skyward_vab::Slot, found: Result<keys::Fou
     // there to ueventd, which looks in the recovery's firmware folders.
     std::fs::write(FIRMWARE_FALLBACK, "1").with_context(|| format!("write 1 to {FIRMWARE_FALLBACK}"))?;
     if let Some(firmware) = &cfg.firmware {
-        mount_firmware(&firmware.partition)?;
+        mount_firmware(&firmware.partition, !cfg.device.ab)?;
     }
     for name in &cfg.partitions.mounted {
         let at = skyward_block::fstab::mount(name)?;
@@ -704,7 +704,7 @@ const FIRMWARE_SHOWN: &str = "/firmware";
 /// world's apps look for theirs, and show it where the recovery's ueventd
 /// looks for the rest. Both stay when the recovery service starts again.
 #[cfg(target_os = "android")]
-fn mount_firmware(partition: &str) -> Result<()> {
+fn mount_firmware(partition: &str, single: bool) -> Result<()> {
     let shown = Path::new(FIRMWARE_SHOWN);
     if skyward_block::mount::is_mount_point(shown)? {
         return Ok(());
@@ -713,10 +713,15 @@ fn mount_firmware(partition: &str) -> Result<()> {
         .with_context(|| format!("the phone's own table does not mount {partition}"))?;
     let at = PathBuf::from(&entry.mount_point);
     std::fs::create_dir_all(&at).with_context(|| format!("make {}", at.display()))?;
-    // The loader's own options, not everything the table gives: a vfat
-    // firmware partition is mounted read-only, and the extra words are
-    // for the system's fs_mgr, not the kernel.
-    skyward_block::mount::mount(Path::new(&skyward_block::fstab::device(&entry)?), &at, &entry.filesystem, &["ro".to_string()])?;
+    // A phone with one slot's init may have mounted it already, as its
+    // charger action does; mounting it again fails with the resource busy,
+    // and the keys still have to come up.
+    if !single || !skyward_block::mount::is_mount_point(&at)? {
+        // The loader's own options, not everything the table gives: a vfat
+        // firmware partition is mounted read-only, and the extra words are
+        // for the system's fs_mgr, not the kernel.
+        skyward_block::mount::mount(Path::new(&skyward_block::fstab::device(&entry)?), &at, &entry.filesystem, &["ro".to_string()])?;
+    }
     std::fs::create_dir_all(shown).with_context(|| format!("make {}", shown.display()))?;
     skyward_block::mount::bind(&at, shown)?;
     skyward_sys::kmsg(&format!("{partition} is mounted on {}, shown at {}", at.display(), shown.display()))
@@ -772,19 +777,41 @@ fn recovery() -> Result<()> {
             let header = skyward_binder::service::choose_header(&binder)?;
             skyward_sys::kmsg(&format!("the service directory reads the header {header:#x}"))?;
         }
+        // The port comes up before the configuration is taken up, so that a
+        // failure later can still be looked at over adb. Making the port up
+        // itself belongs to a phone with one slot; an A/B phone keeps init's
+        // own port as it always had.
+        let loaded = DeviceConfig::load(Path::new("/").join(ramdisk::CONFIG));
+        let self_setup = loaded.as_ref().is_ok_and(|cfg| cfg.usb.self_setup && !cfg.device.ab);
+        skyward_sys::usb::set_self_setup(self_setup);
         // A recovery that ended with a function of its own in the port took
-        // the port with it; going through "none" takes that function off.
-        if skyward_sys::prop("sys.usb.state").is_some_and(|s| s != "adb") {
-            skyward_sys::usb::set("none", std::time::Duration::from_secs(5))?;
+        // the port with it, and a configuration that stopped after naming adb
+        // leaves the state saying adb with no adbd behind it; either way a
+        // recovery that sets the port up itself goes through "none" before
+        // adb is asked for again. There a failure is told and the pages still
+        // come up without adb; otherwise it ends the start, as it always did.
+        let started = skyward_sys::usb::start_adb(std::time::Duration::from_secs(5));
+        if self_setup {
+            if let Err(e) = started {
+                skyward_sys::kmsg(&format!(
+                    "adb not brought up: {e:#}; usb state {:?}, adbd {:?}, ffs ready {:?}, controller {:?}",
+                    skyward_sys::prop("sys.usb.state"),
+                    skyward_sys::prop("init.svc.adbd"),
+                    skyward_sys::prop("sys.usb.ffs.ready"),
+                    skyward_sys::prop("sys.usb.controller")
+                ))?;
+            }
+        } else {
+            started?;
         }
-        skyward_sys::set_prop("sys.usb.config", "adb")?;
+        let cfg = loaded?;
         let misc = bcb::misc();
         let message = bcb::read(&misc)?;
         let request = message.request();
         if !request.work.lasts() {
             bcb::clear(&misc)?;
         }
-        let cfg = DeviceConfig::load(Path::new("/").join(ramdisk::CONFIG))?;
+        skyward_vab::set_single_slot(!cfg.device.ab);
         skyward_sys::kmsg(&format!(
             "{} Skyward-vivo {} recovery up, misc command {:?} args {:?}, asking for {:?}",
             cfg.device.model,
@@ -854,23 +881,36 @@ fn recovery() -> Result<()> {
     })
 }
 
-/// Keep the key service's interface libraries from the recovery's own
-/// vendor directory before the installed vendor partition is mounted over
-/// it, where the installed program's library search reaches.
+/// Keep the key service's interface libraries, and those of the services it
+/// serves with it, from the recovery's own vendor directory before the
+/// installed vendor partition is mounted over it, where the installed
+/// program's library search reaches. A phone with one slot's recovery may
+/// show one of them as a link into that vendor directory, which the
+/// installed partition hides, so the real file takes the link's place.
 #[cfg(target_os = "android")]
-fn keep_keymint_libraries() -> Result<()> {
+fn keep_keymint_libraries(single: bool) -> Result<()> {
     const FROM: &str = "/vendor/lib64";
     const TO: &str = "/system/lib64";
+    let prefix = if single { "android.hardware.security." } else { "android.hardware.security.keymint-" };
     let mut kept = Vec::new();
     for entry in std::fs::read_dir(FROM).with_context(|| format!("read {FROM}"))? {
         let entry = entry.with_context(|| format!("read {FROM}"))?;
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if !name.starts_with("android.hardware.security.keymint-") {
+        if !name.starts_with(prefix) {
             continue;
         }
         let to = Path::new(TO).join(name.as_ref());
-        if std::fs::symlink_metadata(&to).is_ok() {
+        if single {
+            match std::fs::symlink_metadata(&to) {
+                Ok(meta) if meta.file_type().is_symlink() => {
+                    std::fs::remove_file(&to).with_context(|| format!("remove the link {}", to.display()))?;
+                }
+                Ok(_) => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e).with_context(|| format!("look at {}", to.display())),
+            }
+        } else if std::fs::symlink_metadata(&to).is_ok() {
             continue;
         }
         std::fs::copy(entry.path(), &to).with_context(|| format!("copy {} to {}", entry.path().display(), to.display()))?;
@@ -890,7 +930,7 @@ fn prepare(cfg: &DeviceConfig, slot: skyward_vab::Slot) -> Result<Vec<skyward_co
     // The installed vendor partition carries the key service program but
     // may not carry the interface library it was built against; the
     // recovery's own vendor directory has it.
-    if let Err(e) = keep_keymint_libraries() {
+    if let Err(e) = keep_keymint_libraries(!cfg.device.ab) {
         skyward_sys::kmsg(&format!("the recovery's key service libraries not kept: {e:#}"))?;
     }
     match skyward_vab::mount_partitions(slot) {

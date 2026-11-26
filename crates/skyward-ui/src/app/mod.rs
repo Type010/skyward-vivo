@@ -27,8 +27,8 @@ use skyward_info::DeviceInfo;
 use skyward_install::{Event, ImageKind, Outcome, Place as FlashPlace, Reflash, Refusal, Stage, Target as FlashTarget};
 use skyward_net::download::{Failure, Progress};
 use skyward_net::github::{Build, Newest};
-use skyward_net::release::{Release, Unanswered};
 use skyward_net::supplicant::Security;
+use skyward_net::unanswered::Unanswered;
 use skyward_net::wlan::{Joined, Network, Power, Stage as Joining, Traffic, Wlan};
 use skyward_systems::{Overview, Who};
 use skyward_vab::{BootSlots, Hold, Slot, SnapshotState, Standing};
@@ -57,7 +57,6 @@ mod systems;
 mod terminal;
 #[cfg(test)]
 mod testing;
-mod update;
 mod wipe;
 mod wlan;
 
@@ -76,7 +75,6 @@ pub use skyward::*;
 pub use state::*;
 pub use systems::*;
 pub use terminal::*;
-pub use update::*;
 pub use wipe::*;
 pub use wlan::*;
 
@@ -371,14 +369,6 @@ pub enum Action {
     PickSecurity(Security),
     /// Close the list open over the page, choosing nothing.
     CloseChoices,
-    /// Ask the update server for the newest system.
-    CheckUpdate,
-    /// Download the newest system's full package, or carry on downloading
-    /// it.
-    Download,
-    StopDownload,
-    /// Install the full package downloaded.
-    InstallDownloaded,
     /// Ask GitHub for Skyward's newest release.
     CheckSkyward,
     /// Download the newest release's build for the phone and write it into
@@ -575,13 +565,6 @@ pub enum Effect {
     ScanWlan,
     JoinWlan { ssid: Vec<u8>, name: String, security: Security, password: Secret },
     LeaveWlan,
-    /// Ask the update server for the newest system, telling what it
-    /// answered with [`App::update_checked`].
-    CheckUpdate,
-    /// Download `release`'s full package into [`DOWNLOADS`], telling how it
-    /// goes with [`App::download_progress`] and [`App::download_ended`].
-    Download(Release),
-    StopDownload,
     /// Ask GitHub for Skyward's newest release, telling what it answered
     /// with [`App::skyward_checked`].
     CheckSkyward,
@@ -657,7 +640,7 @@ const TOAST_MS: u64 = 2000;
 const BLINK_MS: u64 = 500;
 /// The spring the home page's search bar moves to the search page's field
 /// on, and back: critically damped, fitted to frames of the stock settings
-/// on a Xiaomi 17 Ultra.
+/// on a iQOO 11 Pro.
 const MORPH_PERIOD: f32 = 0.292;
 /// Along the move, from 0 at the home page to 1 at the search page: where
 /// the large title has faded away, and the stretch over which the button
@@ -674,8 +657,8 @@ const MORPH_BODY_MS: (u64, u64) = (380, 120);
 /// the row never shows pressed.
 const ROW_PRESS_DELAY_MS: u64 = 90;
 /// The spring a row held down darkens on, and fades back on once let go:
-/// critically damped, fitted to frames of the stock settings on a Xiaomi
-/// 17 Ultra.
+/// critically damped, fitted to frames of the stock settings on an iQOO
+/// 11 Pro.
 const ROW_PRESS_PERIOD: f32 = 0.18;
 /// A row let go before it showed pressed shows pressed from the lift this
 /// long, as Android shows a quick tap.
@@ -683,7 +666,7 @@ const QUICK_TAP_MS: u64 = 64;
 /// A page opening slides in on a critically damped spring of this period,
 /// set off already moving this fast, in screen widths a second; a page
 /// going back slides off on a spring of this period, from rest. Both fitted
-/// to frames of the stock settings on a Xiaomi 17 Ultra.
+/// to frames of the stock settings on a iQOO 11 Pro.
 const OPEN_PERIOD: f32 = 0.37;
 const OPEN_SPEED: f32 = 2.94;
 const BACK_PERIOD: f32 = 0.393;
@@ -714,7 +697,7 @@ const TITLE_BLUR_DP: f32 = 25.0 / 3.0;
 /// faint once its foot reaches its top. A page let go with the bar folded
 /// this share of the way or further settles folded, and unfolded short of
 /// it, on a critically damped spring of this period set off from rest.
-/// Fitted to frames of the stock settings on a Xiaomi 17 Ultra.
+/// Fitted to frames of the stock settings on a iQOO 11 Pro.
 const FOLD_FADE_DP: f32 = 26.0;
 const FOLD_SETTLE: f32 = 0.5;
 const FOLD_PERIOD: f32 = 0.354;

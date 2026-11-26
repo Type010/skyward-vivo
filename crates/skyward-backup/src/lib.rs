@@ -128,10 +128,10 @@ mod tests {
         let stored = |name: &str, size| Stored { files: vec![format!("{name}.000")], size, stored: size / 2, compressed: true, sha256: "ab".repeat(32) };
         let m = Manifest {
             format: FORMAT,
-            device: "ishtar".into(),
+            device: "PD2254".into(),
             made: 1_792_561_872,
             slot: "_b".into(),
-            system: Some("OS3.0.305.0.WMACNXM".into()),
+            system: Some("16.3.12.2.W10".into()),
             android: Some("16".into()),
             data_key: Some("00112233445566778899aabbccddeeff".into()),
             items: vec![
@@ -151,7 +151,7 @@ mod tests {
     fn a_backup_in_the_layout_before_reads_and_one_in_a_later_layout_does_not() {
         let at = std::env::temp_dir().join(format!("skyward-manifest-layouts-{}", std::process::id()));
         std::fs::create_dir_all(&at).unwrap();
-        let before = "format = 1\ndevice = \"ishtar\"\nmade = 1792561872\nslot = \"_b\"\nsystem = \"OS3.0.305.0.WMACNXM\"\ndata_key = \"0011\"\n\n[[items]]\npart = \"data\"\nname = \"data\"\nfiles = [\"data.tar.000\"]\nsize = 9\nstored = 9\ncompressed = false\nsha256 = \"ab\"\n";
+        let before = "format = 1\ndevice = \"PD2254\"\nmade = 1792561872\nslot = \"_b\"\nsystem = \"16.3.12.2.W10\"\ndata_key = \"0011\"\n\n[[items]]\npart = \"data\"\nname = \"data\"\nfiles = [\"data.tar.000\"]\nsize = 9\nstored = 9\ncompressed = false\nsha256 = \"ab\"\n";
         std::fs::write(at.join(MANIFEST), before).unwrap();
         let m = Manifest::read(&at).unwrap();
         assert_eq!((m.format, m.android.as_deref(), m.parts()), (FORMAT_WITHOUT_STORAGE, None, [false, false, true, false, false]));

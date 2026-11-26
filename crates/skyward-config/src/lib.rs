@@ -77,13 +77,23 @@ pub struct DeviceConfig {
     /// The phone's WLAN, on phones whose driver the recovery brings up.
     #[serde(default)]
     pub wlan: Option<Wlan>,
-    /// Where the phone maker answers which system is the newest, on phones
-    /// whose server the recovery knows.
+    /// The USB port, on phones whose recovery init leaves it unset.
     #[serde(default)]
-    pub update: Option<Update>,
+    pub usb: Usb,
     /// The stock build the recovery is made on.
     #[serde(default)]
     pub stock: Option<Stock>,
+}
+
+/// What the recovery does about the USB port when the phone's init does
+/// not do it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct Usb {
+    /// Whether the recovery makes the configfs gadget and adb's function
+    /// itself. A phone whose init sets the port up leaves this off, so its
+    /// recovery starts the port exactly as it always did.
+    #[serde(default)]
+    pub self_setup: bool,
 }
 
 /// The stock build a recovery is made on: the phone maker's full update
@@ -91,7 +101,7 @@ pub struct DeviceConfig {
 /// of, and that partition as it should come out of the package.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Stock {
-    /// The build's version, such as OS4.0.4.0.XPACNXM.
+    /// The build's version, such as PD2254_A_16.5.17.1.W10.V000L1.
     pub version: String,
     /// Where the package is downloaded from, over HTTPS.
     pub package: String,
@@ -168,14 +178,6 @@ pub struct Firmware {
     /// still ends bringing the WLAN up.
     #[serde(default)]
     pub optional: bool,
-}
-
-/// The phone maker's update server, which the stock updater asks about the
-/// installed system.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct Update {
-    /// Where the questions are sent.
-    pub server: String,
 }
 
 /// What a backup takes in and leaves out beyond what every Android phone
@@ -661,8 +663,15 @@ mod tests {
         assert_eq!(cfg.device.os_version_prop, "ro.build.display.id");
         assert_eq!(cfg.modules.sources, default_module_sources());
         assert!(cfg.modules.load.is_empty());
-        assert_eq!((cfg.firmware, cfg.wlan, cfg.update), (None, None, None), "a phone may have none of them");
+        assert_eq!((cfg.firmware, cfg.wlan), (None, None), "a phone may have neither");
         assert_eq!(cfg.logd, None, "a recovery's own logd usually has all it needs");
+        assert!(!cfg.usb.self_setup, "a phone's init sets its port up unless the configuration says otherwise");
+    }
+
+    #[test]
+    fn the_port_is_made_only_where_the_configuration_asks() {
+        let own = DeviceConfig::parse("[device]\ncodename = \"x\"\n[usb]\nself_setup = true\n").unwrap();
+        assert!(own.usb.self_setup);
     }
 
     #[test]
@@ -692,8 +701,8 @@ mod tests {
     #[test]
     fn files_handed_over_name_their_accounts_a_mode_and_absolute_paths() {
         let with = |body: &str| DeviceConfig::parse(&format!("[device]\ncodename = \"x\"\n[[owners]]\n{body}\n"));
-        let ok = with("user = \"system\"\ngroup = \"system\"\nmode = 0o664\npaths = [\"/dev/xiaomi-touch\"]").unwrap();
-        assert_eq!(ok.owners, [Owners { user: "system".into(), group: "system".into(), mode: 0o664, paths: vec!["/dev/xiaomi-touch".into()] }]);
+        let ok = with("user = \"system\"\ngroup = \"system\"\nmode = 0o664\npaths = [\"/dev/vivo-touch\"]").unwrap();
+        assert_eq!(ok.owners, [Owners { user: "system".into(), group: "system".into(), mode: 0o664, paths: vec!["/dev/vivo-touch".into()] }]);
         assert!(with("user = \"system\"\ngroup = \"system\"\nmode = 0o664\npaths = []").is_err(), "no file");
         assert!(with("user = \"sys tem\"\ngroup = \"system\"\nmode = 0o664\npaths = [\"/dev/a\"]").is_err());
         assert!(with("user = \"system\"\ngroup = \"system\"\nmode = 0o17777\npaths = [\"/dev/a\"]").is_err(), "not a file's mode");

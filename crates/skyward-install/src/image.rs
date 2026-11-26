@@ -718,9 +718,9 @@ mod tests {
 
     #[test]
     fn skyward_carries_its_device_configuration() {
-        let config = device_config(&mut Cursor::new(skyward_for("ishtar"))).unwrap().expect("Skyward carries one");
-        assert_eq!(config, b"[device]\ncodename = \"ishtar\"\n");
-        assert!(is_skyward(&mut Cursor::new(skyward_for("ishtar"))).unwrap());
+        let config = device_config(&mut Cursor::new(skyward_for("PD2254"))).unwrap().expect("Skyward carries one");
+        assert_eq!(config, b"[device]\ncodename = \"PD2254\"\n");
+        assert!(is_skyward(&mut Cursor::new(skyward_for("PD2254"))).unwrap());
         assert_eq!(device_config(&mut Cursor::new(recovery(false))).unwrap(), None);
     }
 
@@ -767,10 +767,10 @@ mod tests {
         assert_eq!(kind_of(&filesystem(EXT4_MAGIC)).unwrap(), ImageKind::Filesystem(Filesystem::Ext4));
         assert_eq!(kind_of(&filesystem(EROFS_MAGIC)[..1026]).unwrap(), ImageKind::Other, "a file that ends inside the magic number");
         assert_eq!(kind_of(&vec![0u8; 16384]).unwrap(), ImageKind::Other, "an erased partition");
-        // The start of a Xiaomi 13 Ultra's own super.
-        let ishtar = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../skyward-lp/tests/ishtar-super-metadata.bin")).unwrap();
-        assert_eq!(kind_of(&ishtar).unwrap(), ImageKind::Super);
-        let mut image = Cursor::new(&ishtar);
+        // The start of a super partition's own metadata.
+        let super_metadata = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../skyward-lp/tests/super-metadata.bin")).unwrap();
+        assert_eq!(kind_of(&super_metadata).unwrap(), ImageKind::Super);
+        let mut image = Cursor::new(&super_metadata);
         check_super(&mut image, 9_663_676_416).unwrap();
         check_super(&mut image, 1 << 40).unwrap();
         let err = check_super(&mut image, 9_663_676_416 - 4096).unwrap_err();

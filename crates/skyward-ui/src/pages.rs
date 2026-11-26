@@ -1,8 +1,8 @@
 use crate::app::{
-    Action, BackupAt, BackupEnd, BackupJob, Check, ClashChoice, Confirm, Damage, Data, Dock, DownloadEnd, EraseStop, Field, FileKind,
-    FileOp, FileTask, Fold, Folder, Frame, FsAction, FsChoice, FsRow, Have, HeroArt, Hit, Install, JobEnd, Keys, Pick, Place, Region, Rows,
+    Action, BackupAt, BackupEnd, BackupJob, ClashChoice, Confirm, Damage, Data, Dock, EraseStop, Field, FileKind,
+    FileOp, FileTask, Fold, Folder, Frame, FsAction, FsChoice, FsRow, HeroArt, Hit, Install, JobEnd, Keys, Pick, Place, Region, Rows,
     Screen, SkywardCheck, SkywardEnd, SkywardJob, SkywardStage, Slider, Source, State, Switch, SystemsWork, Target, UsbDrive, UsbLink, Wipe,
-    ADDABLE, BACKUP_PARTS, DATA_PART, DATA_PARTITION, DOWNLOADS, FASTBOOT_CHOICES, MEDIA_PART, SCREEN_OFF, TARGETS, TIME_ZONES, UTC, WIPES, installs, listed, starting,
+    ADDABLE, BACKUP_PARTS, DATA_PART, DATA_PARTITION, FASTBOOT_CHOICES, MEDIA_PART, SCREEN_OFF, TARGETS, TIME_ZONES, UTC, WIPES, installs, listed, starting,
 };
 use crate::canvas::Canvas;
 use crate::color::Rgba;
@@ -311,17 +311,10 @@ fn systems_value(cx: &Ctx) -> Option<String> {
     }
 }
 
-/// What the advanced page says beside its system update entry: a download
-/// under way, a newer system found, or where an update the system installed
-/// stands.
+/// What the advanced page says beside its system update entry: where an
+/// update the system installed stands.
 fn update_value(cx: &Ctx) -> &'static str {
     let (s, l) = (cx.state, cx.state.lang);
-    if s.downloading() {
-        return l.pick(texts::update::DOWNLOADING);
-    }
-    if s.newest().is_some_and(|r| cx.info.os_version.as_deref() != Some(r.version.as_str())) {
-        return l.pick(texts::update::NEW_VERSION);
-    }
     fmt::update_value(l, &s.update)
 }
 
@@ -2211,11 +2204,6 @@ pub fn update(cx: &Ctx) -> Frame {
         y = widgets::section_first(&mut c, t, f, y, l.pick(texts::common::THIS_PHONE));
         y = widgets::info_card(&mut c, t, f, y, &[(l.pick(texts::update::CURRENT_VERSION), v.clone())]);
     }
-    if s.update_server {
-        let online_update = l.pick(texts::update::ONLINE);
-        y = if y == top { widgets::section_first(&mut c, t, f, y, online_update) } else { widgets::section(&mut c, t, f, y, online_update) };
-        y = online(&mut c, cx, y, &mut out);
-    }
     let next = match &s.boot_slots {
         Some(Ok(slots)) => Some(slots.active),
         _ => None,
@@ -2241,85 +2229,6 @@ pub fn update(cx: &Ctx) -> Frame {
         y = widgets::footnote(&mut c, t, f, track.y + track.h, l.pick(texts::update::CANT_GO_BACK));
     }
     Frame::new(t, fit(c, t, y), out, l.pick(texts::page::UPDATE), top)
-}
-
-/// Asking the update server for the newest system, then its full package:
-/// downloading it, how far that has come, and installing it once it is
-/// whole; then what to note before installing it.
-fn online(c: &mut Canvas, cx: &Ctx, y: f32, out: &mut Vec<Hit>) -> f32 {
-    let (t, f, s, i, l) = (cx.t, cx.f, cx.state, cx.info, cx.state.lang);
-    let release = match &s.check {
-        Check::Asking => return widgets::list(c, t, f, y, &[Row::new(l.pick(texts::update::CHECKING)).trail(Trail::None)]).bottom,
-        Check::Answered(Some(r)) => r,
-        other => {
-            let mut row = Row::new(l.pick(texts::update::CHECK));
-            if !s.online() {
-                row = row.subtitle(l.pick(texts::update::WLAN_FIRST));
-            }
-            let check = widgets::list(c, t, f, y, &[row]);
-            out.extend(hits(&check.rows, &[Action::CheckUpdate]));
-            return match other {
-                Check::Failed(why) => widgets::footnote(c, t, f, check.bottom, &fmt::unanswered(l, why)),
-                Check::Answered(None) => widgets::footnote(c, t, f, check.bottom, l.pick(texts::update::NONE_KNOWN)),
-                _ => check.bottom,
-            };
-        }
-    };
-    let newer = i.os_version.as_deref() != Some(release.version.as_str());
-    let title = if newer { texts::update::new_version_named(l, &release.version) } else { l.pick(texts::update::UP_TO_DATE).to_string() };
-    let size = match release.length {
-        Some(length) => fmt::file_size(length),
-        None => fmt::package_size(&release.size),
-    };
-    let package = texts::update::full_package(l, size);
-    let mut y = widgets::list(c, t, f, y, &[Row::new(&title).icon(GREEN, Icon::Layers).subtitle(&package).trail(Trail::None)]).bottom;
-    match (&s.download, s.have) {
-        (Some(job), _) if job.outcome.is_none() => {
-            let (heading, detail, share) = match job.progress {
-                None => (l.pick(texts::installing::GETTING_READY), String::new(), None),
-                Some(p) => downloaded(l, p, job.rate),
-            };
-            y = widgets::progress_card(c, t, f, y + t.m.card_gap, heading, &detail, share);
-            let label = l.pick(if job.stopping { texts::update::PAUSING } else { texts::update::PAUSE });
-            let stop = widgets::list(c, t, f, y + t.m.card_gap, &[Row::new(label).trail(Trail::None)]);
-            if !job.stopping {
-                out.extend(hits(&stop.rows, &[Action::StopDownload]));
-            }
-            y = stop.bottom;
-        }
-        (_, Have::Whole(_)) => {
-            let row = Row::new(l.pick(texts::page::INSTALL)).subtitle(l.pick(texts::update::DOWNLOADED_TO_STORAGE));
-            let install = widgets::list(c, t, f, y + t.m.card_gap, &[row]);
-            out.extend(hits(&install.rows, &[Action::InstallDownloaded]));
-            y = install.bottom;
-        }
-        (job, have) => {
-            match job.as_ref().and_then(|j| j.outcome.as_ref()) {
-                Some(DownloadEnd::Failed(why)) => y = widgets::footnote(c, t, f, y, &fmt::download_failure(l, why)),
-                Some(DownloadEnd::Stopped) => y = widgets::footnote(c, t, f, y, l.pick(texts::update::PAUSED)),
-                _ => {}
-            }
-            let title = l.pick(if matches!(have, Have::Part(_)) { texts::update::RESUME } else { texts::update::DOWNLOAD });
-            let had = match have {
-                Have::Part(done) => Some(texts::update::downloaded(l, fmt::file_size(done))),
-                _ => None,
-            };
-            let sub = if !s.data.storage_open() {
-                Some(l.pick(texts::decrypt::NEEDED))
-            } else if !s.online() {
-                Some(l.pick(texts::update::WLAN_FIRST))
-            } else {
-                had.as_deref()
-            };
-            let row = Row::new(title);
-            let download = widgets::list(c, t, f, y + t.m.card_gap, &[sub.map_or(row, |sub| row.subtitle(sub))]);
-            out.extend(hits(&download.rows, &[Action::Download]));
-            y = download.bottom;
-        }
-    }
-    let saved = texts::update::saved_in(l, DOWNLOADS);
-    let points = [l.pick(texts::update::KEEPS_DATA), saved.as_str(), l.pick(texts::update::RESUMABLE), l.pick(texts::update::OPTIMIZES)];
-    widgets::notes(c, t, f, y + t.m.card_gap, l.pick(texts::common::NOTES), &points)
 }
 
 /// What a progress card says of a download, and the share of it done:

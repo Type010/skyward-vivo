@@ -148,8 +148,10 @@ enum Ready {
 /// phone has services of the older kind, and the credential service; on a
 /// phone with a weaver, start what the weaver reaches its secure element
 /// through, serving Android's secure element service where that is what it
-/// goes through, and the weaver; and start the boot control.
-pub fn steps(phone: &Phone) -> Result<Vec<Step>> {
+/// goes through, and the weaver; and start the boot control on a phone that
+/// has one. A phone with one slot has none to start, and the keys do not
+/// need it.
+pub fn steps(phone: &Phone, boot_control: bool) -> Result<Vec<Step>> {
     let mut out = Vec::new();
     let start = |out: &mut Vec<Step>, started: Started| out.push(Step::Start(Box::new(started)));
     if let Some(listeners) = named(phone, LISTENERS)? {
@@ -167,8 +169,12 @@ pub fn steps(phone: &Phone) -> Result<Vec<Step>> {
     start(&mut out, started(phone, keys, Ready::Service(KEYS.into()), besides(phone, keys, KEYS, with_keys)));
 
     let (credentials, credentials_kind) = offered(phone, CREDENTIALS).context("the phone describes no credential service")?;
-    let (boot, boot_kind) = offered(phone, BOOT).context("the phone describes no boot control")?;
-    if credentials_kind == Kind::Hidl || boot_kind == Kind::Hidl {
+    let boot = offered(phone, BOOT);
+    if boot.is_none() && boot_control {
+        bail!("the phone describes no boot control");
+    }
+    let boot_hidl = boot.as_ref().is_some_and(|(_, kind)| *kind == Kind::Hidl);
+    if credentials_kind == Kind::Hidl || boot_hidl {
         let directory = phone
             .programs
             .iter()
@@ -189,9 +195,11 @@ pub fn steps(phone: &Phone) -> Result<Vec<Step>> {
         out.extend(weaver(phone)?);
     }
 
-    let program = behind(phone, "the boot control", &boot, |file| file.starts_with(BOOT.0))?;
-    let registers = besides(phone, program, &boot, alone);
-    start(&mut out, started(phone, program, ready(boot, boot_kind), registers));
+    if let Some((boot, boot_kind)) = boot {
+        let program = behind(phone, "the boot control", &boot, |file| file.starts_with(BOOT.0))?;
+        let registers = besides(phone, program, &boot, alone);
+        start(&mut out, started(phone, program, ready(boot, boot_kind), registers));
+    }
     Ok(out)
 }
 

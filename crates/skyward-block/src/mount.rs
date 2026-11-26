@@ -644,8 +644,7 @@ mod tests {
 
     #[test]
     fn a_mount_is_made_again_from_what_the_kernels_table_shows_of_it() {
-        // The firmware partition of a Xiaomi 13 Ultra, as its recovery
-        // mounts it.
+        // The firmware partition of a phone, as its recovery mounts it.
         let shared = [
             ("ro", None),
             ("context", Some("u:object_r:firmware_file:s0")),

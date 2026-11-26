@@ -27,17 +27,15 @@ use skyward_sys::control::{Control, Request};
 use skyward_sys::Power;
 use skyward_files::Ownership;
 use skyward_block::usb::{self, Drive};
-use skyward_net::download::{self, Failure};
 use skyward_net::http::Servers;
-use skyward_net::release::{Installed, Release, Unanswered};
 use skyward_net::wlan::{Power as WlanPower, Stage as Joining, Wlan};
 use skyward_sys::sleep::{Sleeper, Slept};
 use skyward_sys::uevent;
 use skyward_systems::Who;
 use skyward_ui::app::{
-    App, Asked, BackupAt, BackupEnd, BackupEntry, BackupRefusal, ClashChoice, Data, DownloadEnd, Effect, EraseStop, FileKind, FileOp,
-    FileRow, FileTask, FsAction, FsRow, Have, Held, ItemEnd, ItemState, JobEnd, Keys, MountFailure, Part, PartKind, PartStop, Place,
-    RenameRefused, Screen, Shot, SkywardEnd, SkywardStage, Target, UsbDrive, UsbLink, Wipe, DATA_OPENING, DATA_PARTITION, DOWNLOADS,
+    App, Asked, BackupAt, BackupEnd, BackupEntry, BackupRefusal, ClashChoice, Data, Effect, EraseStop, FileKind, FileOp,
+    FileRow, FileTask, FsAction, FsRow, Held, ItemEnd, ItemState, JobEnd, Keys, MountFailure, Part, PartKind, PartStop, Place,
+    RenameRefused, Screen, Shot, SkywardEnd, SkywardStage, Target, UsbDrive, UsbLink, Wipe, DATA_OPENING, DATA_PARTITION,
     INSTALL_UNFINISHED, USB_DRIVE,
 };
 use skyward_ui::fmt::TimeZone;
@@ -129,21 +127,10 @@ impl Backlight {
     }
 }
 
-/// How a panel's node in the device tree may give its normal maximum: the
-/// property holding it, and the one holding the whole range on the same
-/// scale. The 13 Ultra's panel gives both on a finer scale of its own that
-/// spans the same light as the backlight's range; the 17 Ultra's gives them
-/// on the backlight's own scale. The panels of the Xiaomi 13 and 15, of the
-/// 14 and the K80 series and one of the K90's give it only as the level
-/// their factory tests drive the panel to, on the backlight's own scale:
-/// the 13 Ultra's panels give that level as well, and it comes to the same
-/// half of their range as the normal maximum they give.
-const NORMAL_MAX: [(&str, &str); 4] = [
-    ("mi,normal-max-brightness-clone", "mi,max-brightness-clone"),
-    ("mi,max-brightness-normal", "qcom,mdss-dsi-bl-max-level"),
-    ("mi,mdss-dsi-fac-bl-max-level", "qcom,mdss-dsi-bl-max-level"),
-    // vivo's panel gives the normal maximum on the backlight's own scale and
-    // the range's top as its high-brightness maximum.
+/// How a panel's node in the device tree gives its normal maximum: vivo's
+/// panel gives it on the backlight's own scale and the range's top as its
+/// high-brightness maximum.
+const NORMAL_MAX: [(&str, &str); 1] = [
     ("qcom,mdss-dsi-bl-max-level", "vivo,panel-hbm-max-brightness"),
 ];
 
@@ -1118,46 +1105,6 @@ fn wlan_worker(w: &Option<wlan::Worker>) -> Result<&wlan::Worker> {
     w.as_ref().context("the phone's WLAN is not brought up")
 }
 
-/// The installed system, as the update server is told of it.
-fn installed(cfg: &DeviceConfig, info: &skyward_info::DeviceInfo) -> Result<Installed> {
-    let slot = info.slot.context("only an A/B phone is updated")?;
-    let props = skyward_info::installed_props(slot)?;
-    let prop = |name: &str| props.get(name).cloned().with_context(|| format!("the installed system says no {name}"));
-    Ok(Installed {
-        device: prop("ro.product.mod_device")?,
-        version: prop(&cfg.device.os_version_prop)?,
-        android: prop("ro.build.version.release")?,
-        unlocked: skyward_block::boot_param("androidboot.flash.locked")?.as_deref() == Some("0"),
-    })
-}
-
-/// Where `release`'s full package is downloaded to.
-fn downloaded(release: &Release) -> PathBuf {
-    Path::new(skyward_crypto::data::SDCARD).join(DOWNLOADS).join(&release.name)
-}
-
-/// What internal storage holds of `release`'s full package; nothing while it
-/// cannot be read.
-fn have(app: &App, release: &Release) -> Have {
-    if !app.state.data.storage_open() {
-        return Have::Nothing;
-    }
-    let path = downloaded(release);
-    let size = |p: &Path| match fs::metadata(p) {
-        Ok(m) => Some(m.len()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => {
-            let _ = skyward_sys::kmsg(&format!("read {}: {e}", p.display()));
-            None
-        }
-    };
-    match (size(&path), size(&download::partial(&path))) {
-        (Some(whole), _) => Have::Whole(whole),
-        (None, Some(part)) => Have::Part(part),
-        (None, None) => Have::Nothing,
-    }
-}
-
 /// Wait until a device, the installer or the recovery socket has something,
 /// or `timeout_ms` passes.
 fn wait(fds: &[i32], timeout_ms: i32) -> Result<()> {
@@ -1305,9 +1252,6 @@ struct Pages<'a> {
     /// The WLAN, on a phone whose driver the recovery brings up.
     wlan: Option<wlan::Worker>,
     scanned_at: Instant,
-    /// Asking the update server, and downloading the full package.
-    checker: Option<updates::Worker>,
-    downloader: Option<updates::Worker>,
     /// Asking GitHub for Skyward's newest release, and updating to it.
     skyward_checker: Option<updates::Worker>,
     skyward_updater: Option<updates::Worker>,
@@ -1530,8 +1474,6 @@ impl<'a> Pages<'a> {
             servers: Arc::new(Mutex::new(Vec::new())),
             wlan: None,
             scanned_at: Instant::now(),
-            checker: None,
-            downloader: None,
             skyward_checker: None,
             skyward_updater: None,
             shell: None,
@@ -1658,7 +1600,6 @@ impl<'a> Pages<'a> {
             self.wlan = Some(wlan::Worker::start(w.clone(), modules, libraries, self.servers.clone())?);
         }
         self.scanned_at = Instant::now();
-        self.app.state.update_server = cfg.update.is_some();
         self.drive_at = Instant::now();
         Ok(())
     }
@@ -1716,7 +1657,6 @@ impl<'a> Pages<'a> {
         self.systems_told(now)?;
         self.wlan_told()?;
         self.keep_settings(now)?;
-        self.updates_told(now)?;
         self.skyward_told(now)?;
         self.decrypt_told(now)?;
         self.shell_told()?;
@@ -1902,12 +1842,6 @@ impl<'a> Pages<'a> {
         if let Some(w) = &self.wlan {
             fds.push(w.fd());
         }
-        if let Some(c) = &self.checker {
-            fds.push(c.fd());
-        }
-        if let Some(d) = &self.downloader {
-            fds.push(d.fd());
-        }
         if let Some(c) = &self.skyward_checker {
             fds.push(c.fd());
         }
@@ -1936,8 +1870,6 @@ impl<'a> Pages<'a> {
             || self.merger.is_some()
             || self.decryptor.is_some()
             || self.part_worker.is_some()
-            || self.checker.is_some()
-            || self.downloader.is_some()
             || self.skyward_checker.is_some()
             || self.skyward_updater.is_some()
             || systems_busy;
@@ -2351,52 +2283,6 @@ impl Pages<'_> {
 
     /// What asking the update server, and downloading the system's full
     /// package, told.
-    fn updates_told(&mut self, now: u64) -> Result<()> {
-        let told = self.checker.as_ref().map(updates::Worker::events).unwrap_or_default();
-        let mut checked = false;
-        for ev in told {
-            let updates::Event::Checked(answer) = ev else { unreachable!("asking the server downloads nothing") };
-            let have = match &answer {
-                Ok(Some(release)) => have(&self.app, release),
-                _ => Have::Nothing,
-            };
-            self.app.update_checked(answer, have);
-            checked = true;
-        }
-        if checked {
-            self.checker = None;
-        }
-        let told = self.downloader.as_ref().map(updates::Worker::events).unwrap_or_default();
-        let mut fetched = false;
-        for ev in told {
-            match ev {
-                updates::Event::Progress(progress, rate) => self.app.download_progress(progress, rate),
-                updates::Event::Ended(end) => {
-                    let release = self.app.state.newest().context("a download is of the newest system")?.clone();
-                    let end = match end {
-                        updates::End::Downloaded => DownloadEnd::Downloaded,
-                        updates::End::Stopped => DownloadEnd::Stopped,
-                        updates::End::Failed(why) => DownloadEnd::Failed(why),
-                        updates::End::Updated(_) | updates::End::NotWritten(_) | updates::End::WriteFailed(..) => {
-                            unreachable!("a system's full package is only downloaded")
-                        }
-                    };
-                    skyward_sys::kmsg(&format!("downloading {} ended: {end:?}", release.name))?;
-                    let have = have(&self.app, &release);
-                    self.app.download_ended(end, have, now);
-                    fetched = true;
-                }
-                updates::Event::Checked(_) | updates::Event::SkywardChecked(_) | updates::Event::Writing { .. } => {
-                    unreachable!("a download asks nothing of its own, and writes nothing")
-                }
-            }
-        }
-        if fetched {
-            self.downloader = None;
-        }
-        Ok(())
-    }
-
     /// What asking GitHub for Skyward's newest release, and updating to it,
     /// told.
     fn skyward_told(&mut self, now: u64) -> Result<()> {
@@ -2430,7 +2316,7 @@ impl Pages<'_> {
                     self.app.skyward_ended(end, now);
                     updated = true;
                 }
-                updates::Event::Checked(_) | updates::Event::SkywardChecked(_) => unreachable!("an update asks nothing of its own"),
+                updates::Event::SkywardChecked(_) => unreachable!("an update asks nothing of its own"),
             }
         }
         if updated {
@@ -2725,9 +2611,6 @@ impl Pages<'_> {
                 wlan_worker(&self.wlan)?.send(wlan::Command::Join { ssid, name, security, password: password.0 })
             }
             Effect::LeaveWlan => wlan_worker(&self.wlan)?.send(wlan::Command::Leave),
-            Effect::CheckUpdate => self.check_update()?,
-            Effect::Download(release) => self.download(release, now)?,
-            Effect::StopDownload => self.downloader.as_ref().context("there is no download to stop")?.stop(),
             Effect::CheckSkyward => {
                 ensure!(self.skyward_checker.is_none(), "GitHub is being asked already");
                 let probe = cfg.wlan.as_ref().context("the phone's WLAN is not brought up")?.probe.clone();
@@ -3052,39 +2935,6 @@ impl Pages<'_> {
         };
         self.backuper = Some(backup::Worker::start(backup::Task::Restore(task))?);
         self.app.backup_started(true, place, true);
-        Ok(())
-    }
-
-    /// Ask the update server for the newest system. What the installed
-    /// system is called is the page's to report when it cannot be read.
-    fn check_update(&mut self) -> Result<()> {
-        ensure!(self.checker.is_none(), "the update server is being asked already");
-        let server = self.cfg.update.as_ref().context("the phone's update server is not known")?.server.clone();
-        let probe = self.cfg.wlan.as_ref().context("the phone's WLAN is not brought up")?.probe.clone();
-        match installed(self.cfg, &self.info) {
-            Ok(installed) => {
-                self.checker = Some(updates::Worker::start(updates::Task::Check { server, probe, installed }, self.servers.clone())?)
-            }
-            Err(e) => self.app.update_checked(Err(Unanswered::Failed(format!("{e:#}"))), Have::Nothing),
-        }
-        Ok(())
-    }
-
-    /// Download `release`'s full package into internal storage.
-    fn download(&mut self, release: Release, now: u64) -> Result<()> {
-        ensure!(self.downloader.is_none(), "the full package is being downloaded already");
-        let server = self.cfg.update.as_ref().context("the phone's update server is not known")?.server.clone();
-        let path = downloaded(&release);
-        match installed(self.cfg, &self.info) {
-            Ok(installed) => {
-                let task = updates::Task::Download { server, installed, release, path };
-                self.downloader = Some(updates::Worker::start(task, self.servers.clone())?);
-            }
-            Err(e) => {
-                let have = have(&self.app, &release);
-                self.app.download_ended(DownloadEnd::Failed(Failure::Other(format!("{e:#}"))), have, now);
-            }
-        }
         Ok(())
     }
 

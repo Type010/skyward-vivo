@@ -227,8 +227,8 @@ mod tests {
             made,
             size: 6_200_000_000,
             parts,
-            device: "ishtar".into(),
-            system: Some("OS3.0.305.0.WMACNXM".into()),
+            device: "PD2254".into(),
+            system: Some("16.3.12.2.W10".into()),
             slot: Some(Slot::B),
         };
         BackupEntry { place, name: fmt::stamp(made, State::default().zone()), held: Ok(held) }

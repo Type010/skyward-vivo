@@ -655,12 +655,12 @@ mod tests {
 ota-property-files=payload_metadata.bin:2365:94208,payload.bin:2365:7103041280,payload_properties.txt:7103043714:154,metadata:69:637,metadata.pb:773:1529
 ota-required-cache=0
 ota-type=AB
-post-build=Xiaomi/ishtar/ishtar:16/BP2A.250605.031.A3/OS3.0.306.0.WMACNXM:user/release-keys
-post-build-incremental=OS3.0.306.0.WMACNXM
+post-build=vivo/PD2254/PD2254:16/BP2A.250605.031.A3/16.3.12.3.W10:user/release-keys
+post-build-incremental=16.3.12.3.W10
 post-sdk-level=36
 post-security-patch-level=2026-06-01
 post-timestamp=1781000000
-pre-device=ishtar
+pre-device=PD2254
 ";
 
     const PROPERTIES_TEXT: &str = "\
@@ -672,7 +672,7 @@ METADATA_SIZE=1024
 
     fn phone() -> Phone {
         Phone {
-            device: "ishtar".into(),
+            device: "PD2254".into(),
             serial: "2674dc3e".into(),
             installed: Some(Build { timestamp: 1_778_243_655, security_patch: "2026-04-01".into() }),
         }
@@ -711,9 +711,9 @@ METADATA_SIZE=1024
 
     #[test]
     fn packages_for_other_phones_are_refused() {
-        let other = METADATA_TEXT.replace("pre-device=ishtar", "pre-device=nezha");
-        assert_eq!(check(&update_with(&other, PROPERTIES_TEXT), &phone()), Err(Refusal::OtherDevice("nezha".into())));
-        let listed = METADATA_TEXT.replace("pre-device=ishtar", "pre-device=nezha|ishtar");
+        let other = METADATA_TEXT.replace("pre-device=PD2254", "pre-device=PD2217");
+        assert_eq!(check(&update_with(&other, PROPERTIES_TEXT), &phone()), Err(Refusal::OtherDevice("PD2217".into())));
+        let listed = METADATA_TEXT.replace("pre-device=PD2254", "pre-device=PD2217|PD2254");
         assert_eq!(check(&update_with(&listed, PROPERTIES_TEXT), &phone()), Ok(()));
         let serial = format!("{METADATA_TEXT}serialno=abc|def\n");
         assert_eq!(check(&update_with(&serial, PROPERTIES_TEXT), &phone()), Err(Refusal::OtherSerial));
@@ -726,7 +726,7 @@ METADATA_SIZE=1024
     #[test]
     fn incremental_and_older_packages_are_refused() {
         let incremental = format!(
-            "{METADATA_TEXT}pre-build=Xiaomi/ishtar/ishtar:16/X/OS3.0.305.0.WMACNXM:user/release-keys\npre-build-incremental=OS3.0.305.0.WMACNXM\n"
+            "{METADATA_TEXT}pre-build=vivo/PD2254/PD2254:16/X/16.3.12.2.W10:user/release-keys\npre-build-incremental=16.3.12.2.W10\n"
         );
         assert_eq!(check(&update_with(&incremental, PROPERTIES_TEXT), &phone()), Err(Refusal::Incremental));
         let older = METADATA_TEXT.replace("1781000000", "1770000000");
@@ -797,7 +797,7 @@ METADATA_SIZE=1024
         assert_eq!(&bytes[at..at + payload.len()], payload);
         assert_eq!(u.payload_size, payload.len() as u64);
         assert_eq!(u.properties, PROPERTIES_TEXT);
-        assert_eq!(u.version(), Some("OS3.0.306.0.WMACNXM"));
+        assert_eq!(u.version(), Some("16.3.12.3.W10"));
     }
 
     fn inner_package(prop_file: &str, prop: &str) -> Vec<u8> {

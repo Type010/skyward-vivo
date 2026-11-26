@@ -23,6 +23,21 @@ const RESTART_DELAY: Duration = Duration::from_secs(1);
 
 /// How long a program gets to become what it says it will be.
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// The network accounts Android fixes, which a phone with one slot's own
+/// group file may leave to the system's: its secure world's opener gives a
+/// socket to `inet`, and a recovery that finds no account named it cannot
+/// hand the socket over.
+const NETWORK_ACCOUNTS: [(&str, u32); 8] = [
+    ("net_bt_admin", 3001),
+    ("net_bt", 3002),
+    ("inet", 3003),
+    ("net_raw", 3004),
+    ("net_admin", 3005),
+    ("net_bw_stats", 3006),
+    ("net_bw_acct", 3007),
+    ("net_bt_stack", 3008),
+];
 const READY_POLL: Duration = Duration::from_millis(100);
 
 /// Where the kernel says the highest capability it knows.
@@ -97,7 +112,13 @@ pub fn once(program: &Started) -> Result<ExitStatus> {
 
 /// The accounts the phone knows, each by its name.
 fn accounts() -> HashMap<String, u32> {
-    ueventd::accounts(&ueventd::PASSWD_FILES.iter().chain(&ueventd::GROUP_FILES).copied().collect::<Vec<_>>())
+    let mut known = ueventd::accounts(&ueventd::PASSWD_FILES.iter().chain(&ueventd::GROUP_FILES).copied().collect::<Vec<_>>());
+    if skyward_vab::single_slot() {
+        for (name, id) in NETWORK_ACCOUNTS {
+            known.entry(name.to_string()).or_insert(id);
+        }
+    }
+    known
 }
 
 /// What `program` is started with, worked out before it is: the program

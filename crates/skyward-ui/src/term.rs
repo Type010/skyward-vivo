@@ -370,11 +370,11 @@ mod tests {
     #[test]
     fn what_the_shell_writes_shows_and_scrolls_back() {
         let mut term = Term::new(3, 20);
-        term.feed(b"ishtar:/ # ls\r\nbin\r\netc\r\nvendor\r\nishtar:/ # ");
-        assert_eq!(term.screen().contents(), "etc\nvendor\nishtar:/ # ");
+        term.feed(b"PD2254:/ # ls\r\nbin\r\netc\r\nvendor\r\nPD2254:/ # ");
+        assert_eq!(term.screen().contents(), "etc\nvendor\nPD2254:/ # ");
         assert_eq!(term.screen().cursor_position(), (2, 11));
         term.scroll(2);
-        assert_eq!(term.screen().contents(), "ishtar:/ # ls\nbin\netc");
+        assert_eq!(term.screen().contents(), "PD2254:/ # ls\nbin\netc");
         term.scroll(10);
         assert_eq!(term.screen().scrollback(), 2, "no further back than the oldest line kept");
         term.scroll(-1);

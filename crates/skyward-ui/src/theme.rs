@@ -78,7 +78,7 @@ pub struct Hero {
     pub chevron: Rgba,
 }
 
-/// Layout metrics measured on a Xiaomi 17 Ultra's stock settings, in dp,
+/// Layout metrics measured on an iQOO 11 Pro's stock settings, in dp,
 /// converted at the panel's density.
 #[derive(Clone, Copy)]
 pub struct Metrics {
@@ -233,7 +233,7 @@ fn metrics(w: u32, h: u32, px_per_dp: f32) -> Metrics {
     }
 }
 
-// Sampled from the stock Settings on a Xiaomi 17 Ultra.
+// Sampled from the stock Settings on an iQOO 11 Pro.
 const LIGHT: Palette = Palette {
     bg: Rgba::rgb(243, 243, 243),
     card: Rgba::rgb(255, 255, 255),

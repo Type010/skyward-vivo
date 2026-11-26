@@ -3211,7 +3211,7 @@ mod tests {
     #[test]
     fn the_search_cursor_stands_where_the_stock_field_puts_it() {
         let f = crate::font::bundled();
-        // A Xiaomi 13 Ultra panel.
+        // An iQOO 11 Pro panel.
         let t = Theme::light(1440, 3200, 3.5);
         let (x, w, cy) = (t.m.dp(48.0), t.m.dp(340.0), t.m.dp(60.0));
         let px = t.m.row_title_px;
@@ -3381,7 +3381,7 @@ mod tests {
         let under = layout(&c, &t, &f, &Row::new(title).subtitle("Vom Telefon"));
         assert!(under.h > long.h, "and has the line under the title below them");
         // A file's name is one word, and ends where the row does.
-        let name = "OTA_ishtar_OS3.0.305.0.WMACNXM_20260412_full_package_signed_for_recovery_install.zip";
+        let name = "OTA_PD2254_16.3.12.2.W10_20260412_full_package_signed_for_recovery_install.zip";
         let file = layout(&c, &t, &f, &Row::new(name));
         assert_eq!((file.title_lines.as_slice(), file.h), ([name.to_string()].as_slice(), t.m.row_h));
         // A network's name stays beside its fan, whatever it is called.
@@ -3406,7 +3406,7 @@ mod tests {
         assert!(tight.h > t.m.row_h, "the row grows with them");
         // A value of one long word ends where its room does, and leaves
         // the title whole.
-        let name = "OTA_ishtar_OS3.0.305.0.WMACNXM_20260412_full_package_signed_for_recovery_install.zip";
+        let name = "OTA_PD2254_16.3.12.2.W10_20260412_full_package_signed_for_recovery_install.zip";
         let file = layout(&c, &t, &f, &Row::new("Package").trail(Trail::Text(name)));
         assert_eq!((file.title_lines.as_slice(), file.value_lines.len()), (["Package".to_string()].as_slice(), 1));
         assert_eq!(file.value_max, Some(file.value_w), "cut short at its room");

@@ -49,14 +49,12 @@ pub struct Other {
     pub size: u64,
 }
 
-/// What the installed system calls itself, by its properties: HyperOS by
-/// the major version Xiaomi gives it, any other by its Android version;
-/// with the build it is, where it says.
+/// What the installed system calls itself, by its properties: its Android
+/// version, with the build it is, where it says.
 pub fn installed_name(props: &HashMap<String, String>, version_prop: &str) -> Named {
-    let name = match (props.get("ro.mi.os.version.code"), props.get("ro.build.version.release")) {
-        (Some(code), _) => format!("HyperOS {code}"),
-        (None, Some(release)) => format!("Android {release}"),
-        (None, None) => "Android".into(),
+    let name = match props.get("ro.build.version.release") {
+        Some(release) => format!("Android {release}"),
+        None => "Android".into(),
     };
     let version = props.get(version_prop).or_else(|| props.get("ro.build.display.id")).cloned();
     Named { name, version }
@@ -72,12 +70,10 @@ mod tests {
 
     #[test]
     fn the_installed_system_is_named_as_it_names_itself() {
-        let hyper = props(&[("ro.mi.os.version.code", "3"), ("ro.build.version.release", "16"), ("ro.mi.os.version.incremental", "OS3.0.308.0.WMACNXM")]);
-        assert_eq!(installed_name(&hyper, "ro.mi.os.version.incremental"), Named { name: "HyperOS 3".into(), version: Some("OS3.0.308.0.WMACNXM".into()) });
-        let custom = props(&[("ro.build.version.release", "16"), ("ro.build.display.id", "lineage_ishtar-userdebug 16 BP2A")]);
+        let props = props(&[("ro.build.version.release", "16"), ("ro.build.display.id", "PD2254-userdebug 16 BP2A")]);
         assert_eq!(
-            installed_name(&custom, "ro.mi.os.version.incremental"),
-            Named { name: "Android 16".into(), version: Some("lineage_ishtar-userdebug 16 BP2A".into()) }
+            installed_name(&props, "ro.vivo.build.version.incremental"),
+            Named { name: "Android 16".into(), version: Some("PD2254-userdebug 16 BP2A".into()) }
         );
     }
 }

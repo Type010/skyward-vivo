@@ -2,16 +2,16 @@ use anyhow::{anyhow, Result};
 use skyward_config::DeviceConfig;
 use skyward_info::{Battery, Boot, Charge, Cpu, DeviceInfo, PatchLevel, Storage};
 use skyward_install::{Failure, Filesystem, ImageKind, Outcome, Place as FlashPlace, Ramdisk, Reflash, Refusal, Stage, Target as FlashTarget};
-use skyward_net::download::{Failure as DownloadFailure, Progress};
+use skyward_net::download::Progress;
 use skyward_net::github::{Build, Newest};
 use skyward_net::reach::Reach;
-use skyward_net::release::{Release, Unanswered};
 use skyward_net::supplicant::Security;
+use skyward_net::unanswered::Unanswered;
 use skyward_net::wlan::{Bands, Joined, Link, Network, Power, Stage as Joining, Traffic, Wlan};
 use skyward_systems::{Named, Other, Overview, Who};
 use skyward_ui::app::{
-    Action, Adding, App, Asked, BackupAt, BackupEnd, BackupEntry, BackupJob, BackupRefusal, Choice, Clip, Damage, Data, DownloadEnd,
-    DownloadJob, EraseStop, Field, FileKind, FileOp, FileRow, FileTask, FsAction, FsRow, Have, Held, Install, ItemEnd, JobEnd, Key, Keys,
+    Action, Adding, App, Asked, BackupAt, BackupEnd, BackupEntry, BackupJob, BackupRefusal, Choice, Clip, Damage, Data,
+    EraseStop, Field, FileKind, FileOp, FileRow, FileTask, FsAction, FsRow, Held, Install, ItemEnd, JobEnd, Key, Keys,
     MountFailure, MountRow, Part, PartKind, PartStop, Pick, Place, Region, Screen, SkywardEnd, SkywardJob, SkywardStage, Source, State,
     SystemChoice, SystemsWork, TermEnd, Touch, UsbDrive, UsbLink, SCREEN_OFF, listed,
 };
@@ -38,15 +38,15 @@ fn lang() -> Lang {
 }
 
 /// What a shell in the recovery writes for a few commands, colours and all.
-const SHELL_SAMPLE: &[u8] = b"ishtar:/ # getprop ro.product.device\r\nishtar\r\n\
-ishtar:/ # ls --color=always /\r\n\
+const SHELL_SAMPLE: &[u8] = b"PD2254:/ # getprop ro.product.device\r\nPD2254\r\n\
+PD2254:/ # ls --color=always /\r\n\
 \x1b[1;34macct\x1b[0m  \x1b[1;34mapex\x1b[0m  \x1b[1;36mbin\x1b[0m  \x1b[1;34mconfig\x1b[0m  \x1b[1;34mdata\x1b[0m  \x1b[1;34mdev\x1b[0m\r\n\
 \x1b[1;36metc\x1b[0m  \x1b[1;32minit\x1b[0m  \x1b[1;34mmetadata\x1b[0m  \x1b[1;34mmnt\x1b[0m  \x1b[1;34modm\x1b[0m\r\n\
 \x1b[1;34mproc\x1b[0m  \x1b[1;34msys\x1b[0m  \x1b[1;34msystem\x1b[0m  \x1b[1;34mtmp\x1b[0m  \x1b[1;34mvendor\x1b[0m\r\n\
-ishtar:/ # df -h /metadata\r\n\
+PD2254:/ # df -h /metadata\r\n\
 Filesystem      Size Used Avail Use% Mounted on\r\n\
 /dev/block/sda9  59M 7.0M   52M  12% /metadata\r\n\
-ishtar:/ # ";
+PD2254:/ # ";
 
 /// A script as the editor shows it: an indented line, a comment in
 /// Chinese, and lines long enough to wrap.
@@ -104,11 +104,11 @@ fn phone_filesystems(open: bool) -> Vec<FsRow> {
     ]
 }
 
-/// The systems of a 17 Ultra with a second system installed, HyperOS
+/// The systems of a phone with a second system installed, OriginOS 6 on
 /// starting.
 fn two_systems() -> Overview {
     Overview {
-        installed: Named { name: "HyperOS 3".into(), version: Some("OS3.0.308.0.WMACNXM".into()) },
+        installed: Named { name: "OriginOS 6".into(), version: Some("16.3.12.4.W10".into()) },
         other: Some(Other { id: "ubuntu-touch".into(), name: "Ubuntu Touch".into(), version: "24.04-1.x".into(), size: 32_000_000_000 }),
         other_starts: false,
         changed: false,
@@ -165,7 +165,7 @@ fn main() -> Result<()> {
         _ => {}
     }
 
-    let info = nezha(&cfg);
+    let info = iqoo10(&cfg);
     let pending = DeviceInfo { snapshot: SnapshotState::Snapshotted, ..info.clone() };
     let pattern = Data::Locked { user: 0, keys: Keys::Pattern, checking: false };
     // Whole pages, the way a long screenshot shows them. The About page's
@@ -207,8 +207,8 @@ fn main() -> Result<()> {
     let recovery = ImageKind::Boot { kernel: false, ramdisk: Ramdisk::Recovery };
     let slotted = |name: &str| FlashTarget { name: name.into(), place: FlashPlace::Slotted };
     // A filesystem image named for vendor, which fits every logical
-    // partition of a Xiaomi 13 Ultra.
-    let logical: Vec<FlashTarget> = ["vendor", "odm", "product", "system", "system_dlkm", "system_ext", "vendor_dlkm", "mi_ext"]
+    // partition of a vivo 13 Ultra.
+    let logical: Vec<FlashTarget> = ["vendor", "odm", "product", "system", "system_dlkm", "system_ext", "vendor_dlkm", "my_heytap"]
         .map(|name| FlashTarget { name: name.into(), place: FlashPlace::Logical })
         .to_vec();
     let installing: [(&str, bool, Install); 22] = [
@@ -261,7 +261,7 @@ fn main() -> Result<()> {
             "33-sideload-writing-dark",
             true,
             Install::Updating {
-                version: Some("OS4.0.5.0.XPACNXM".into()),
+                version: Some("16.5.18.1.W10".into()),
                 stage: Some(Stage::Writing { done: 2_934_000_000, total: 7_103_041_280 }),
                 overwriting: true,
             },
@@ -270,15 +270,15 @@ fn main() -> Result<()> {
             "34-sideload-verifying",
             false,
             Install::Updating {
-                version: Some("OS4.0.5.0.XPACNXM".into()),
+                version: Some("16.5.18.1.W10".into()),
                 stage: Some(Stage::Verifying { index: 6, count: 21, partition: "system".into() }),
                 overwriting: false,
             },
         ),
         ("35-sideload-flashing", false, Install::Flashing { partition: "boot".into(), stage: Some(Stage::Flashing { done: 300, total: 800 }) }),
         ("36-sideload-installed", false, Install::Finished { outcome: Outcome::Installed { slot: Slot::A, wipe: false }, damage: None }),
-        ("96-sideload-light-wipes", false, Install::Confirming { version: Some("OS3.0.306.0.WMACNXM".into()), wipe: true }),
-        ("18-install-ready", false, Install::Confirming { version: Some("OS3.0.306.0.WMACNXM".into()), wipe: false }),
+        ("96-sideload-light-wipes", false, Install::Confirming { version: Some("16.3.12.3.W10".into()), wipe: true }),
+        ("18-install-ready", false, Install::Confirming { version: Some("16.3.12.3.W10".into()), wipe: false }),
         (
             "37-sideload-flashed-recovery-dark",
             true,
@@ -287,7 +287,7 @@ fn main() -> Result<()> {
         (
             "38-sideload-refused",
             false,
-            Install::Finished { outcome: Outcome::Refused(Refusal::OtherDevice("ishtar".into())), damage: None },
+            Install::Finished { outcome: Outcome::Refused(Refusal::OtherDevice("PD2254".into())), damage: None },
         ),
         (
             "39-sideload-failed",
@@ -358,8 +358,8 @@ fn main() -> Result<()> {
         BackupEntry { place, name: fmt::stamp(made, State::default().zone()), held: Ok(held) }
     };
     let backups = vec![
-        made(Place::Storage, 1_792_348_260, 58_214_000_000, [true; 5], "OS4.0.4.0.XPACNXM"),
-        made(Place::UsbDrive, 1_791_830_000, 141_000_000, [true, false, false, false, false], "OS4.0.3.0.XPACNXM"),
+        made(Place::Storage, 1_792_348_260, 58_214_000_000, [true; 5], "16.5.17.1.W10"),
+        made(Place::UsbDrive, 1_791_830_000, 141_000_000, [true, false, false, false, false], "16.5.16.1.W10"),
         BackupEntry {
             place: Place::Storage,
             name: "20261020-221500".into(),
@@ -400,7 +400,7 @@ fn main() -> Result<()> {
         app.set_files("/sdcard/Download".into(), Ok(sample_download()), LISTED);
         app.state.file = sample_download().into_iter().find(|e| e.name == name);
     };
-    let ota = "/sdcard/Download/OTA_ishtar_OS3.0.305.0.WMACNXM_20260412_full_package_signed_for_recovery_install.zip";
+    let ota = "/sdcard/Download/OTA_PD2254_16.3.12.2.W10_20260412_full_package_signed_for_recovery_install.zip";
     let copying = || FileTask::Copy { path: ota.into(), into: "/sdcard/Skyward".into() };
     let from_storage = |app: &mut App, install: Install| {
         app.state.source = Source::File(Place::Storage);
@@ -412,7 +412,7 @@ fn main() -> Result<()> {
         let mut lines = vec![
             " ",
             "******************************",
-            "  Example ROM 2.1 for ishtar",
+            "  Example ROM 2.1 for PD2254",
             "******************************",
             " ",
             "- 正在检查设备型号",
@@ -430,14 +430,14 @@ fn main() -> Result<()> {
     };
     let script = |app: &mut App, install: Install, failed: bool| {
         from_storage(app, install);
-        app.state.package_name = Some("ExampleROM-2.1-ishtar.zip".into());
+        app.state.package_name = Some("ExampleROM-2.1-PD2254.zip".into());
         app.state.script_output = said(failed);
     };
     let usb_page = Screen::Choose(Place::UsbDrive);
     let adding = |app: &mut App, name: &str, security: Security, field: Field, choosing: bool| {
         app.state.adding = Some(Adding { name: name.into(), security, field, choosing });
     };
-    let pages: [PageShot; 185] = [
+    let pages: [PageShot; 175] = [
         ("11-install-light-locked", Screen::Install, false, &|app| {
             app.state.data = Data::Locked { user: 0, keys: Keys::Digits, checking: false };
         }),
@@ -453,7 +453,7 @@ fn main() -> Result<()> {
         ("19-choose-usb-light", usb_page, false, &|app| {
             app.set_usb_drive(Some(UsbDrive::Shown));
             let made = 1_790_380_800;
-            let rows = vec![folder("ROMs", 4, made), file("boot.img", 100_663_296, made), file("ishtar-ota-OS3.0.306.0.WMACNXM.zip", 7_103_043_868, made)];
+            let rows = vec![folder("ROMs", 4, made), file("boot.img", 100_663_296, made), file("PD2254-ota-16.3.12.3.W10.zip", 7_103_043_868, made)];
             app.set_place(Place::UsbDrive, String::new(), Ok(rows), LISTED);
         }),
         ("20-install-usb-checking", Screen::Installing, false, &|app| {
@@ -471,13 +471,13 @@ fn main() -> Result<()> {
         }),
         ("20-install-storage-writing-dark", Screen::Installing, true, &|app| {
             let stage = Some(Stage::Writing { done: 2_934_000_000, total: 7_014_220_000 });
-            from_storage(app, Install::Updating { version: Some("OS3.0.305.0.WMACNXM".into()), stage, overwriting: false })
+            from_storage(app, Install::Updating { version: Some("16.3.12.2.W10".into()), stage, overwriting: false })
         }),
         ("20-install-storage-refused", Screen::Installing, false, &|app| {
             from_storage(app, Install::Finished { outcome: Outcome::Refused(Refusal::Unknown), damage: None })
         }),
         ("20-install-storage-failed", Screen::Installing, false, &|app| {
-            let gone = "read /sdcard/Download/OTA_ishtar_OS3.0.305.0.WMACNXM.zip: Input/output error (os error 5)";
+            let gone = "read /sdcard/Download/OTA_PD2254_16.3.12.2.W10.zip: Input/output error (os error 5)";
             from_storage(app, Install::Finished { outcome: Outcome::Failed(Failure::Unreadable(gone.into())), damage: Some(Damage::System) })
         }),
         ("20-install-script-confirming", Screen::Installing, false, &|app| {
@@ -732,7 +732,7 @@ fn main() -> Result<()> {
             app.part_at(1);
         }),
         ("168-installing-light-asked-locked", Screen::Home, false, &|app| {
-            app.start_asked(false, "/sdcard/Download/ishtar-ota_full-OS3.0.308.0.WMACNXM-user-16.0.zip".into());
+            app.start_asked(false, "/sdcard/Download/PD2254-ota_full-16.3.12.4.W10-user-16.0.zip".into());
             app.asked_locked(0, 0);
         }),
         ("169-installing-dark-asked-opening", Screen::Home, true, &|app| {
@@ -780,9 +780,9 @@ fn main() -> Result<()> {
             app.part_work_ended(Ok(()), 0);
         }),
         ("178-file-info-light-package", Screen::FileInfo, false, &|app| {
-            in_download(app, "OTA_ishtar_OS3.0.305.0.WMACNXM_20260412_full_package_signed_for_recovery_install.zip")
+            in_download(app, "OTA_PD2254_16.3.12.2.W10_20260412_full_package_signed_for_recovery_install.zip")
         }),
-        ("179-file-info-dark-image", Screen::FileInfo, true, &|app| in_download(app, "skyward-recovery-ishtar.img")),
+        ("179-file-info-dark-image", Screen::FileInfo, true, &|app| in_download(app, "skyward-recovery-PD2254.img")),
         ("180-install-opened-light-checking", Screen::Installing, false, &|app| {
             app.state.source = Source::Opened { drive: false };
             app.state.install = Install::Checking { size: 7_014_220_000, stage: None };
@@ -790,58 +790,6 @@ fn main() -> Result<()> {
         ("181-install-opened-dark-usb", Screen::Installing, true, &|app| {
             app.state.source = Source::Opened { drive: true };
             app.state.install = Install::Checking { size: 104_857_600, stage: None };
-        }),
-        ("143-update-light-offline", Screen::Update, false, &|app| {
-            app.state.update_server = true;
-            app.state.wlan = Some(Wlan::default());
-        }),
-        ("144-update-light-newer", Screen::Update, false, &|app| {
-            online(app);
-            app.update_checked(Ok(Some(newest())), Have::Nothing);
-        }),
-        ("145-update-dark-downloading", Screen::Update, true, &|app| {
-            online(app);
-            app.update_checked(Ok(Some(newest())), Have::Nothing);
-            app.state.download = Some(DownloadJob {
-                progress: Some(Progress::Downloading { done: 2_843_210_752, total: 7_572_375_802 }),
-                rate: 23_400_000,
-                outcome: None,
-                stopping: false,
-            });
-        }),
-        ("146-update-light-checking-part", Screen::Update, false, &|app| {
-            online(app);
-            app.update_checked(Ok(Some(newest())), Have::Part(2_843_210_752));
-            let progress = Some(Progress::Checking { done: 1_022_000_000, total: 2_843_210_752 });
-            app.state.download = Some(DownloadJob { progress, rate: 0, outcome: None, stopping: false });
-        }),
-        ("147-update-light-paused", Screen::Update, false, &|app| {
-            online(app);
-            app.update_checked(Ok(Some(newest())), Have::Part(2_843_210_752));
-            app.state.download = Some(DownloadJob { progress: None, rate: 0, outcome: Some(DownloadEnd::Stopped), stopping: false });
-        }),
-        ("148-update-light-no-room", Screen::Update, false, &|app| {
-            online(app);
-            app.update_checked(Ok(Some(newest())), Have::Nothing);
-            let full = DownloadFailure::NoRoom { needed: 7_572_375_802, free: 3_104_000_000 };
-            app.state.download = Some(DownloadJob { progress: None, rate: 0, outcome: Some(DownloadEnd::Failed(full)), stopping: false });
-        }),
-        ("149-update-dark-downloaded", Screen::Update, true, &|app| {
-            online(app);
-            app.update_checked(Ok(Some(newest())), Have::Whole(7_572_375_802));
-        }),
-        ("150-update-light-latest", Screen::Update, false, &|app| {
-            online(app);
-            app.update_checked(Ok(Some(Release { version: "OS4.0.4.0.XPACNXM".into(), ..newest() })), Have::Nothing);
-        }),
-        ("151-update-light-unanswered", Screen::Update, false, &|app| {
-            online(app);
-            let why = "ask https://update.miui.com/updates/miotaV3.php: io: the DNS server at 192.168.1.1:53 did not answer";
-            app.update_checked(Err(Unanswered::Failed(why.into())), Have::Nothing);
-        }),
-        ("183-update-light-login", Screen::Update, false, &|app| {
-            online(app);
-            app.update_checked(Err(Unanswered::Login), Have::Nothing);
         }),
         ("190-skyward-update-light-offline", Screen::SkywardUpdate, false, &|app| {
             app.state.recovery_partitions = true;
@@ -892,7 +840,7 @@ fn main() -> Result<()> {
         ("75-terminal-light-ended", Screen::Terminal, false, &|app| {
             let (rows, cols) = app.term_size(&fonts);
             app.term_started(rows, cols);
-            app.term_output(b"ishtar:/ # exit\r\n");
+            app.term_output(b"PD2254:/ # exit\r\n");
             app.term_ended(TermEnd::Exited(0));
         }),
         ("55-language-light", Screen::Language, false, &|_| {}),
@@ -1312,7 +1260,7 @@ fn swipe_in(app: &mut App, f: &Fonts, info: &DeviceInfo, x: f32) -> u64 {
     64
 }
 
-/// The slot's partitions on a Xiaomi 13 Ultra, in the order super lists
+/// The slot's partitions on a vivo 13 Ultra, in the order super lists
 /// them and where the recovery mounts them, all mounted but `unmounted`.
 /// The touch programs run from odm.
 fn sample_mounts(unmounted: &[&str]) -> Vec<MountRow> {
@@ -1324,7 +1272,7 @@ fn sample_mounts(unmounted: &[&str]) -> Vec<MountRow> {
         ("system_ext", "/mnt/system_ext"),
         ("vendor", "/vendor"),
         ("vendor_dlkm", "/vendor_dlkm"),
-        ("mi_ext", "/mnt/mi_ext"),
+        ("my_heytap", "/mnt/my_heytap"),
     ];
     partitions
         .iter()
@@ -1356,7 +1304,7 @@ fn file(name: &str, size: u64, modified: i64) -> FileRow {
     FileRow { name: name.into(), kind: FileKind::File, size, modified, mode: 0o100_644, uid: 0, gid: 0 }
 }
 
-/// Part of the root folder of a Xiaomi 13 Ultra, as `ls -la /` lists it,
+/// Part of the root folder of a vivo 13 Ultra, as `ls -la /` lists it,
 /// in the file manager's order.
 fn sample_root() -> Vec<FileRow> {
     let made = RAMDISK_TIME;
@@ -1388,9 +1336,9 @@ fn sample_download() -> Vec<FileRow> {
         folder("安装包", 68, this_year),
         file("1d9bf122-130e-4db7-ae55-460c84819f0e.pdf", 1_090_000, this_year),
         file("2021一带一路暨金砖大赛之物联网技术及其在智慧城市与工业互联网领域的应用创新赛表彰文件.pdf", 634_960, earlier),
-        file("OTA_ishtar_OS3.0.305.0.WMACNXM_20260412_full_package_signed_for_recovery_install.zip", 7_014_220_000, this_year),
+        file("OTA_PD2254_16.3.12.2.W10_20260412_full_package_signed_for_recovery_install.zip", 7_014_220_000, this_year),
         file("README.txt", 900, today),
-        file("skyward-recovery-ishtar.img", 104_857_600, today),
+        file("skyward-recovery-PD2254.img", 104_857_600, today),
     ]
 }
 
@@ -1401,7 +1349,7 @@ fn sample_types() -> Vec<FileRow> {
     let mut rows: Vec<FileRow> = [
         ("boot.img", 100_663_296),
         ("IMG_20261021_143005.jpg", 4_812_000),
-        ("update-ishtar.zip", 1_402_000_000),
+        ("update-PD2254.zip", 1_402_000_000),
         ("app-release.apk", 11_300_000),
         ("recovery.log", 486_000),
         ("VID_20261020_201512.mp4", 182_400_000),
@@ -1420,7 +1368,7 @@ fn sample_types() -> Vec<FileRow> {
     rows
 }
 
-/// A Xiaomi 13 Ultra's /system/bin: programs, and the links to toybox that
+/// A vivo 13 Ultra's /system/bin: programs, and the links to toybox that
 /// stand for its commands, in the file manager's order.
 fn sample_bin() -> Vec<FileRow> {
     let programs = [
@@ -1504,35 +1452,16 @@ fn router_link() -> Link {
     }
 }
 
-/// A newer system than the 17 Ultra's own, as the update server tells of
-/// one.
-fn newest() -> Release {
-    Release {
-        version: "OS4.0.6.0.XPACNXM".into(),
-        name: "nezha-ota_full-OS4.0.6.0.XPACNXM-user-17.0-3f2a9c81d4.zip".into(),
-        urls: vec!["https://ultimateota.d.miui.com/OS4.0.6.0.XPACNXM/nezha-ota_full-OS4.0.6.0.XPACNXM-user-17.0-3f2a9c81d4.zip".into()],
-        md5: "3f2a9c81d4e05b7a6c1e9d2f8b7a6c5d".into(),
-        size: "7.1G".into(),
-        length: Some(7_572_375_802),
-    }
-}
-
-/// A phone whose update server is known, on a network joined.
-fn online(app: &mut App) {
-    app.state.update_server = true;
-    app.state.wlan = Some(joined(Joining::Connected(router_link())));
-}
-
 /// A newer release of Skyward than the one running, as GitHub tells of it,
-/// with its zip for the 17 Ultra.
+/// with its zip for the phone.
 fn skyward_newest() -> Newest {
     Newest {
         version: "0.1.4".into(),
         newer: true,
         build: Some(Build {
-            name: "skyward-v0.1.4-nezha-OS4.0.4.0.XPACNXM.zip".into(),
+            name: "skyward-v0.1.4-PD2217-16.5.17.1.W10.zip".into(),
             url: "https://api.github.com/repos/kirklin/skyward/releases/assets/719751747".into(),
-            link: "https://github.com/kirklin/skyward/releases/download/v0.1.4/skyward-v0.1.4-nezha-OS4.0.4.0.XPACNXM.zip".into(),
+            link: "https://github.com/kirklin/skyward/releases/download/v0.1.4/skyward-v0.1.4-PD2217-16.5.17.1.W10.zip".into(),
             size: 43_145_196,
             sha256: "9f6165079529418d8f6635beddfdd9abf9a70c89d69eb467a9922b0db69bfaf1".into(),
         }),
@@ -1587,18 +1516,18 @@ fn whole_page(app: &mut App, f: &Fonts, info: &DeviceInfo) -> Canvas {
     c
 }
 
-/// Xiaomi 17 Ultra by Leica as `skyward info` read it on 2026-10-18 (the
-/// config supplies the SoC name, panel and screen size).
-fn nezha(cfg: &DeviceConfig) -> DeviceInfo {
+/// An iQOO 10 as `skyward info` read it on 2026-10-18 (the config supplies
+/// the SoC name, panel and screen size).
+fn iqoo10(cfg: &DeviceConfig) -> DeviceInfo {
     DeviceInfo {
-        model: "Xiaomi 17 Ultra by Leica".into(),
+        model: "vivo 17 Ultra by Leica".into(),
         codename: cfg.device.codename.clone(),
         soc: cfg.device.soc.clone(),
         cpu: Cpu { cores: 8, max_khz: Some(4_608_000) },
         ram_kib: 15_472_464,
         panel: Some((cfg.display.width, cfg.display.height)),
         screen: cfg.display.diagonal,
-        os_version: Some("OS4.0.4.0.XPACNXM".into()),
+        os_version: Some("16.5.17.1.W10".into()),
         android: Some("17".into()),
         locale: Some("zh-CN".into()),
         time_zone: Some("Asia/Shanghai".into()),

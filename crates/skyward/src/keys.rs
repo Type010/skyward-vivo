@@ -46,7 +46,7 @@ pub fn found(slot: skyward_vab::Slot, libraries: Option<&Path>) -> Result<Found>
         name(&unnamed)?;
         phone = read(slot, libraries)?;
     }
-    Ok(Found { described: phone.told_of(), steps: secure::steps(&phone) })
+    Ok(Found { described: phone.told_of(), steps: secure::steps(&phone, !skyward_vab::single_slot()) })
 }
 
 /// The phone as the partitions of the slot's installed system describe it,
