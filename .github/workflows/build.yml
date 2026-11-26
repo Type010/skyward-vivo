@@ -235,24 +235,24 @@ jobs:
             changes=$(git log --no-merges --pretty='- %s' "$previous..$GITHUB_REF_NAME")
             compare="### 完整变更
 
-https://github.com/${GH_REPO}/compare/${previous}...${GITHUB_REF_NAME}"
+          https://github.com/${GH_REPO}/compare/${previous}...${GITHUB_REF_NAME}"
           else
             changes=$(git log --no-merges --pretty='- %s' "$GITHUB_REF_NAME")
             compare=""
           fi
           notes=$(printf '## Skyward-vivo %s
 
-设备：%s
-基于 Skyward v0.5.0。
+          设备：%s
+          基于 Skyward v0.5.0。
 
-### 更新内容
+          ### 更新内容
 
-%s
+          %s
 
-### 升级说明
+          ### 升级说明
 
-- 刷入前请解锁 bootloader 并备份数据。
+          - 刷入前请解锁 bootloader 并备份数据。
 
-%s
-' "${GITHUB_REF_NAME#v}" "$device_label" "$changes" "$compare")
+          %s
+          ' "${GITHUB_REF_NAME#v}" "$device_label" "$changes" "$compare")
           gh release create "$GITHUB_REF_NAME" --title "$title" --notes "$notes" "${zips[@]}" images/SHA256SUMS
